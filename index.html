@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <title>Dashboard RKEF - PT CERIA METALINDO PRIMA</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css">
+    <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { background-color: #121212 !important; color: #e0e0e0; font-family: 'Segoe UI', sans-serif; }
+        .dashboard-title { font-size: 2.2rem; font-weight: 800; text-transform: uppercase; letter-spacing: 2px; color: #ffffff; margin-bottom: 30px; border-left: 6px solid #00d4ff; padding-left: 20px; }
+        .card { background-color: #1e1e1e !important; border: 1px solid #333; color: #fff; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); margin-bottom: 20px; }
+        .chart-container { height: 350px; width: 100%; }
+        .kpi-card { text-align: center; padding: 15px; }
+        .kpi-value { font-size: 1.5rem; font-weight: bold; color: #00d4ff; }
+        .table { color: #fff !important; }
+        .opt-yellow { background-color: #fff3cd !important; color: #856404 !important; }
+        .opt-red { background-color: #f8d7da !important; color: #721c24 !important; }
+        .opt-black { background-color: #343a40 !important; color: #ffffff !important; }
+    </style>
+</head>
+<body>
+
+<div class="container-fluid py-4">
+    <h1 class="dashboard-title">Dashboard Operasional RKEF<br><span style="font-size: 1.2rem; color: #888; font-weight: normal; letter-spacing: 1px;">PT CERIA METALINDO PRIMA</span></h1>
+
+    <!-- Panel KPI 6 Kolom -->
+    <div class="row">
+        <div class="col-md-2"><div class="card kpi-card"><div>Korelasi Grafik 3</div><div id="kpiCorrelation" class="kpi-value" style="font-size:0.78rem; font-weight:600; line-height:1.3;">-</div></div></div>
+        <div class="col-md-2"><div class="card kpi-card"><div>Avg</div><select id="kpiAvgMetric" class="form-select form-select-sm bg-dark text-white border-secondary mb-1" onchange="processData()"></select><div id="kpiNi" class="kpi-value">0</div></div></div>
+        <div class="col-md-2"><div class="card kpi-card"><div>Total</div><select id="kpiTotalMetric" class="form-select form-select-sm bg-dark text-white border-secondary mb-1" onchange="processData()"></select><div id="kpiTemp" class="kpi-value">0</div></div></div>
+        <div class="col-md-2"><div class="card kpi-card"><div>Entries</div><div id="kpiTotal" class="kpi-value">0</div></div></div>
+        <div class="col-md-2"><div class="card kpi-card"><div>Total Pack</div><div id="kpiPack" class="kpi-value">0</div></div></div>
+        <div class="col-md-2"><div class="card kpi-card"><div>Total Scrap</div><div id="kpiScrap" class="kpi-value">0</div></div></div>
+    </div>
+
+    <div class="card p-3">
+        <div class="row g-2 align-items-center">
+            <div class="col-auto"><input type="date" id="startDate" class="form-control bg-dark text-white border-secondary"></div>
+            <div class="col-auto"><input type="date" id="endDate" class="form-control bg-dark text-white border-secondary"></div>
+            <div class="col-auto"><select id="timeGrouping" class="form-select bg-dark text-white border-secondary"><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option></select></div>
+            <div class="col-auto"><button class="btn btn-primary" onclick="processData()">Apply Filter</button></div>
+            <div class="col-auto"><button class="btn btn-secondary" onclick="resetData()">Reset</button></div>
+            <div class="col-auto"><button class="btn btn-info" onclick="loadFromSheet(true)">🔄 Sync Google Sheet</button></div>
+            <div class="col-auto"><label class="btn btn-outline-warning">Upload JSON (Cadangan) <input type="file" id="fileInput" style="display: none;" onchange="handleFileUpload(event)"></label></div>
+            <div class="col-auto text-secondary small" id="syncStatus">Belum terhubung ke Google Sheet.</div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-6"><div class="card p-3"><select id="metric1" class="form-select mb-2 bg-dark text-white" onchange="processData()"></select><div class="chart-container"><canvas id="chart1"></canvas></div></div></div>
+        <div class="col-md-6"><div class="card p-3"><select id="metric2" class="form-select mb-2 bg-dark text-white" onchange="processData()"></select><div class="chart-container"><canvas id="chart2"></canvas></div></div></div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-12">
+            <div class="card p-3">
+                <div class="row g-2 mb-2">
+                    <div class="col-md-6">
+                        <label class="form-label small text-secondary mb-1">Sumbu Y Kiri (Primary)</label>
+                        <select id="metric3a" class="form-select bg-dark text-white" onchange="processData()"></select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small text-secondary mb-1">Sumbu Y Kanan (Secondary)</label>
+                        <select id="metric3b" class="form-select bg-dark text-white" onchange="processData()"></select>
+                    </div>
+                </div>
+                <div class="chart-container"><canvas id="chart3"></canvas></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Kotak Catatan / Input Manual diantara Grafik dan Tabel -->
+    <div class="card p-3">
+        <label for="manualNotes" class="form-label fw-bold text-info">Catatan Operasional / Log Manual (Dapat Diedit):</label>
+        <textarea id="manualNotes" class="form-control bg-dark text-white border-secondary" rows="3" placeholder="Ketik catatan operasional harian atau mingguan di sini..."></textarea>
+    </div>
+
+    <div class="card p-3"><table id="dataTable" class="table table-striped table-hover w-100"><thead id="tableHead"></thead></table></div>
+    <div class="card p-3">
+        <h5>Ringkasan Statistik</h5>
+        <div class="table-responsive"><table class="table table-bordered table-sm"><thead id="statHead"></thead><tbody id="statBody"></tbody></table></div>
+    </div>
+</div>
+
+<script>
+    // ==== KONFIGURASI SINKRONISASI GOOGLE SHEET ====
+    // Isi dengan URL Web App Apps Script (lihat file "Apps_Script_Backend.gs" & panduan setup).
+    // Contoh: "https://script.google.com/macros/s/AKfycb.../exec"
+    const SHEET_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbwqCSlambWGv4YnCotSq3M0MyAQD2fqok-o59TqE_8pV_UGhws-ez31ud9b97Q_Kq7U/exec";
+    const AUTO_REFRESH_MINUTES = 5; // set 0 untuk mematikan auto-refresh
+
+    // Merapikan format tanggal apa pun (ISO timestamp, "1 Sep 2025", dll) jadi "yyyy-MM-dd"
+    function normalizeDateKey(val) {
+        if (val === null || val === undefined || val === '') return val;
+        let s = String(val);
+        if (s.indexOf('T') !== -1) s = s.split('T')[0]; // buang bagian jam ISO
+        if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s; // sudah rapi
+        const d = new Date(s);
+        if (!isNaN(d.getTime())) {
+            const yyyy = d.getFullYear();
+            const mm = String(d.getMonth() + 1).padStart(2, '0');
+            const dd = String(d.getDate()).padStart(2, '0');
+            return `${yyyy}-${mm}-${dd}`;
+        }
+        return s;
+    }
+
+    // Nilai dianggap TIDAK VALID (dikeluarkan dari rata-rata) jika: kosong, error (#DIV/0! dst), teks non-angka, atau nol
+    function validNum(val) {
+        if (val === null || val === undefined || val === '') return null;
+        if (typeof val === 'string') {
+            const s = val.trim();
+            if (s === '' || s.startsWith('#') || s.toUpperCase() === 'N/A' || s.toUpperCase() === 'NA') return null;
+        }
+        const num = parseFloat(val);
+        if (isNaN(num) || num === 0) return null;
+        return num;
+    }
+
+    async function loadFromSheet(showAlertOnError) {
+        const statusEl = document.getElementById('syncStatus');
+        if (!SHEET_WEBAPP_URL || SHEET_WEBAPP_URL.indexOf('PASTE_URL') !== -1) {
+            statusEl.innerText = 'URL Apps Script belum diisi di dalam file HTML.';
+            return;
+        }
+        statusEl.innerText = 'Memuat data dari Google Sheet...';
+        try {
+            const res = await fetch(SHEET_WEBAPP_URL + '?t=' + Date.now());
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            const json = await res.json();
+            if (!Array.isArray(json)) throw new Error('Format data tidak sesuai (bukan array)');
+            rawData = json.map(item => ({ ...item, Date: normalizeDateKey(item.Date) }));
+            processData();
+            const now = new Date();
+            statusEl.innerText = 'Tersinkron: ' + now.toLocaleTimeString('id-ID') + ' — ' + rawData.length + ' baris data.';
+        } catch (err) {
+            statusEl.innerText = 'Gagal sinkron: ' + err.message;
+            if (showAlertOnError) alert('Gagal memuat data dari Google Sheet:\n' + err.message + '\n\nPastikan URL Web App sudah benar dan sheet sudah di-deploy sebagai "Anyone can access".');
+        }
+    }
+
+    let rawData = [], table, chart1, chart2, chart3;
+    const params = [
+        'Power', 'GHE', 'Calcine consume', 'Diesel consume', 'Paste consumtion', 'SCRAP Recycle', 
+        'Temp Bottom', 'Impedance avg', '%Reductant Coal', 'sidewall temp', 'Freeboard temp', 
+        'West pressure', 'East pressure', 'Ni Loss', 'Ni Product', 'Ni Grade/day', 'Temp Tapping', 
+        'Scrap Generate', 'Product package', '%build up based packaging', 'Temp Skimming', 'Fe', 
+        'Si/Mg', 'Skimming', 'Skimming up to 55 MW'
+    ];
+
+    const catYellow = [
+        'Power', 'GHE', 'Calcine consume', 'Diesel consume', 'Paste consumtion', 'SCRAP Recycle', 
+        'Temp Bottom', 'Impedance avg', '%Reductant Coal', 'sidewall temp', 'Freeboard temp', 
+        'West pressure', 'East pressure'
+    ];
+    const catRed = ['Ni Loss', 'Ni Product', 'Ni Grade/day', 'Temp Tapping', 'Scrap Generate', 'Product package', '%build up based packaging'];
+    const catBlack = ['Temp Skimming', 'Fe', 'Si/Mg', 'Skimming', 'Skimming up to 55 MW'];
+
+    function getCellClass(p) { return catYellow.includes(p) ? 'opt-yellow' : (catRed.includes(p) ? 'opt-red' : 'opt-black'); }
+    function parseLocalDate(dateStr) { return new Date(dateStr + 'T00:00:00'); }
+
+    function initLayout() {
+        let headHtml = '<tr><th>Date</th>' + params.map(p => `<th class="${getCellClass(p)}">${p}</th>`).join('') + '</tr>';
+        document.getElementById('tableHead').innerHTML = headHtml;
+        document.getElementById('statHead').innerHTML = headHtml;
+        ['metric1', 'metric2', 'metric3a', 'metric3b', 'kpiAvgMetric', 'kpiTotalMetric'].forEach(id => {
+            const el = document.getElementById(id);
+            params.forEach(p => el.innerHTML += `<option class="${getCellClass(p)}" value="${p}">${p}</option>`);
+        });
+        // Default pilihan yang masuk akal untuk grafik 3 dan kartu KPI baru
+        if (params.includes('Ni Product')) document.getElementById('metric3b').value = 'Ni Product';
+        if (params.includes('Ni Product')) document.getElementById('kpiAvgMetric').value = 'Ni Product';
+        if (params.includes('Temp Skimming')) document.getElementById('kpiTotalMetric').value = 'Temp Skimming';
+        table = $('#dataTable').DataTable({ paging: true, searching: true });
+    }
+
+    // Analisis korelasi sederhana (Pearson) antara 2 metrik di grafik ketiga
+    function pearsonCorrelation(xs, ys) {
+        const n = xs.length;
+        if (n < 3) return null;
+        const meanX = xs.reduce((a, b) => a + b, 0) / n;
+        const meanY = ys.reduce((a, b) => a + b, 0) / n;
+        let num = 0, denX = 0, denY = 0;
+        for (let i = 0; i < n; i++) {
+            const dx = xs[i] - meanX, dy = ys[i] - meanY;
+            num += dx * dy; denX += dx * dx; denY += dy * dy;
+        }
+        if (denX === 0 || denY === 0) return null;
+        return num / Math.sqrt(denX * denY);
+    }
+
+    function correlationText(paramA, paramB, r) {
+        if (r === null) return 'Data pasangan tidak cukup untuk analisis korelasi.';
+        const abs = Math.abs(r);
+        let strength = abs >= 0.7 ? 'kuat' : (abs >= 0.4 ? 'sedang' : (abs >= 0.2 ? 'lemah' : null));
+        if (!strength) return `Tidak ada hubungan berarti antara "${paramA}" dan "${paramB}" (r=${r.toFixed(2)}).`;
+        if (r > 0) return `Berkorelasi positif ${strength}: "${paramA}" naik → "${paramB}" cenderung ikut naik (r=${r.toFixed(2)}).`;
+        return `Berkorelasi negatif ${strength}: "${paramA}" naik → "${paramB}" cenderung turun (r=${r.toFixed(2)}).`;
+    }
+
+    function handleFileUpload(event) {
+        const reader = new FileReader();
+        reader.onload = (e) => { rawData = JSON.parse(e.target.result).map(item => ({ ...item, Date: normalizeDateKey(item.Date) })); processData(); };
+        reader.readAsText(event.target.files[0]);
+    }
+
+    function resetData() { document.getElementById('startDate').value = ''; document.getElementById('endDate').value = ''; processData(); }
+
+    function processData() {
+        let startVal = document.getElementById('startDate').value;
+        let endVal = document.getElementById('endDate').value;
+        
+        let filtered = rawData.filter(item => {
+            let itemDate = parseLocalDate(item.Date);
+            let start = startVal ? parseLocalDate(startVal) : new Date(0);
+            let end = endVal ? parseLocalDate(endVal) : new Date('9999-12-31');
+            return itemDate >= start && itemDate <= end;
+        });
+
+        const mode = document.getElementById('timeGrouping').value;
+        let grouped = {};
+        filtered.forEach(item => {
+            let d = new Date(item.Date);
+            let key = item.Date;
+
+            if (mode === 'weekly') { 
+                let firstDay = new Date(d.setDate(d.getDate() - d.getDay())); 
+                key = firstDay.toISOString().split('T')[0]; 
+            }
+            else if (mode === 'monthly') { 
+                let options = { month: 'short', year: 'numeric' };
+                key = d.toLocaleDateString('en-US', options); 
+            }
+            
+            if (!grouped[key]) grouped[key] = { count: 0, sum: {}, valid: {} };
+            grouped[key].count++;
+            params.forEach(p => {
+                const num = validNum(item[p]);
+                if (num !== null) {
+                    grouped[key].sum[p] = (grouped[key].sum[p] || 0) + num;
+                    grouped[key].valid[p] = (grouped[key].valid[p] || 0) + 1;
+                }
+            });
+        });
+
+        let finalData = Object.keys(grouped).map(key => {
+            let row = { Date: key };
+            params.forEach(p => {
+                const validCount = grouped[key].valid[p] || 0;
+                row[p] = validCount > 0 ? (grouped[key].sum[p] / validCount) : null;
+            });
+            return row;
+        });
+
+        const totalGroups = finalData.length;
+        if (totalGroups > 0) {
+            const validVals = (p) => finalData.map(i => i[p]).filter(v => v !== null && v !== undefined && !isNaN(v));
+            const avgOf = (p) => { const v = validVals(p); return v.length ? (v.reduce((a,b) => a+b, 0) / v.length) : 0; };
+            const sumOf = (p) => finalData.reduce((acc, i) => acc + (i[p] || 0), 0);
+
+            const avgMetric = document.getElementById('kpiAvgMetric').value;
+            const totalMetric = document.getElementById('kpiTotalMetric').value;
+            document.getElementById('kpiNi').innerText = avgOf(avgMetric).toFixed(2);
+            document.getElementById('kpiTemp').innerText = sumOf(totalMetric).toFixed(0);
+            document.getElementById('kpiTotal').innerText = totalGroups;
+            document.getElementById('kpiPack').innerText = sumOf('Product package').toFixed(0);
+            document.getElementById('kpiScrap').innerText = sumOf('Scrap Generate').toFixed(0);
+
+            // Analisis korelasi untuk grafik ketiga
+            const m3a = document.getElementById('metric3a').value;
+            const m3b = document.getElementById('metric3b').value;
+            const pairXs = [], pairYs = [];
+            finalData.forEach(i => {
+                const a = i[m3a], b = i[m3b];
+                if (a !== null && a !== undefined && !isNaN(a) && b !== null && b !== undefined && !isNaN(b)) {
+                    pairXs.push(a); pairYs.push(b);
+                }
+            });
+            const r = pearsonCorrelation(pairXs, pairYs);
+            document.getElementById('kpiCorrelation').innerText = correlationText(m3a, m3b, r);
+        } else {
+            ['kpiNi', 'kpiTemp', 'kpiTotal', 'kpiPack', 'kpiScrap'].forEach(id => document.getElementById(id).innerText = "0");
+            document.getElementById('kpiCorrelation').innerText = '-';
+        }
+
+        table.destroy();
+        let bodyHtml = finalData.map(item => `<tr><td>${item.Date}</td>${params.map(p => {
+            const v = item[p];
+            return `<td>${(v === null || v === undefined || isNaN(v)) ? '-' : v.toFixed(2)}</td>`;
+        }).join('')}</tr>`).join('');
+        $('#dataTable tbody').remove();
+        $('#dataTable').append('<tbody>' + bodyHtml + '</tbody>');
+        table = $('#dataTable').DataTable({ paging: true, searching: true });
+
+        const validColVals = (p) => finalData.map(i => i[p]).filter(v => v !== null && v !== undefined && !isNaN(v));
+        let statBody = `<tr><td>Max</td>${params.map(p => { const v = validColVals(p); return `<td class="${getCellClass(p)}">${v.length ? Math.max(...v).toFixed(1) : '-'}</td>`; }).join('')}</tr>`;
+        statBody += `<tr><td>Min</td>${params.map(p => { const v = validColVals(p); return `<td class="${getCellClass(p)}">${v.length ? Math.min(...v).toFixed(1) : '-'}</td>`; }).join('')}</tr>`;
+        statBody += `<tr><td>Avg</td>${params.map(p => { const v = validColVals(p); return `<td class="${getCellClass(p)}">${v.length ? (v.reduce((a,b) => a+b, 0) / v.length).toFixed(1) : '-'}</td>`; }).join('')}</tr>`;
+        document.getElementById('statBody').innerHTML = statBody;
+
+        [chart1, chart2].forEach((chart, idx) => {
+            let m = document.getElementById(idx === 0 ? 'metric1' : 'metric2').value;
+            chart.data.labels = finalData.map(i => i.Date);
+            chart.data.datasets[0].data = finalData.map(i => { const v = i[m]; return (v === null || v === undefined || isNaN(v)) ? null : v; });
+            chart.data.datasets[0].label = m;
+            chart.update();
+        });
+
+        const m3a2 = document.getElementById('metric3a').value;
+        const m3b2 = document.getElementById('metric3b').value;
+        chart3.data.labels = finalData.map(i => i.Date);
+        chart3.data.datasets[0].data = finalData.map(i => { const v = i[m3a2]; return (v === null || v === undefined || isNaN(v)) ? null : v; });
+        chart3.data.datasets[0].label = m3a2;
+        chart3.data.datasets[1].data = finalData.map(i => { const v = i[m3b2]; return (v === null || v === undefined || isNaN(v)) ? null : v; });
+        chart3.data.datasets[1].label = m3b2;
+        chart3.update();
+    }
+
+    $(document).ready(function() {
+        initLayout();
+        const cfg = { 
+            responsive: true, 
+            maintainAspectRatio: false, 
+            scales: { 
+                x: { ticks: { color: '#ffffff' }, grid: { color: '#444444' } }, 
+                y: { ticks: { color: '#ffffff' }, grid: { color: '#444444' } } 
+            }, 
+            plugins: { 
+                legend: { labels: { color: '#ffffff' } } 
+            } 
+        };
+        chart1 = new Chart(document.getElementById('chart1'), { type: 'line', data: { datasets: [{ borderColor: '#00d4ff', backgroundColor: 'rgba(0, 212, 255, 0.1)', fill: true, data: [] }] }, options: cfg });
+        chart2 = new Chart(document.getElementById('chart2'), { type: 'line', data: { datasets: [{ borderColor: '#ffc107', backgroundColor: 'rgba(255, 193, 7, 0.1)', fill: true, data: [] }] }, options: cfg });
+
+        const cfgDual = {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            scales: {
+                x: { ticks: { color: '#ffffff' }, grid: { color: '#444444' } },
+                y: { type: 'linear', position: 'left', ticks: { color: '#00d4ff' }, grid: { color: '#444444' } },
+                y1: { type: 'linear', position: 'right', ticks: { color: '#ff5fa2' }, grid: { drawOnChartArea: false } }
+            },
+            plugins: { legend: { labels: { color: '#ffffff' } } }
+        };
+        chart3 = new Chart(document.getElementById('chart3'), {
+            type: 'line',
+            data: { datasets: [
+                { borderColor: '#00d4ff', backgroundColor: 'rgba(0,212,255,0.08)', fill: false, yAxisID: 'y', data: [] },
+                { borderColor: '#ff5fa2', backgroundColor: 'rgba(255,95,162,0.08)', fill: false, yAxisID: 'y1', data: [] }
+            ] },
+            options: cfgDual
+        });
+
+        // Muat data otomatis dari Google Sheet saat halaman dibuka
+        loadFromSheet(false);
+
+        // Auto-refresh berkala
+        if (AUTO_REFRESH_MINUTES > 0) {
+            setInterval(() => loadFromSheet(false), AUTO_REFRESH_MINUTES * 60 * 1000);
+        }
+    });
+</script>
+</body>
+</html>
