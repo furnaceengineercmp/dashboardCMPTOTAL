@@ -64,6 +64,12 @@
             padding: 8px 14px; border-radius: 8px; cursor: pointer; transition: border-color .15s ease, color .15s ease;
         }
         .mode-toggle:hover{ color: var(--text); border-color: var(--accent); }
+        .theme-controls{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+        .theme-select{
+            background: var(--panel); border: 1px solid var(--border); color: var(--text-dim);
+            font-size: .82rem; padding: 8px 12px; border-radius: 8px; cursor: pointer; outline: none;
+        }
+        .theme-select:focus{ border-color: var(--accent); }
 
         .card { background-color: var(--panel) !important; border: 1px solid var(--border); color: var(--text); border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.15); margin-bottom: 20px; }
         .chart-container { height: 350px; width: 100%; }
@@ -136,6 +142,9 @@
     <button id="modeToggle" class="mode-toggle" type="button" title="Ganti mode gelap/terang">
       <span id="modeToggleIcon">🌙</span><span id="modeToggleLabel">Dark</span>
     </button>
+    <div class="theme-controls">
+      <select id="themeSelect" class="theme-select" title="Tema warna"></select>
+    </div>
   </div>
 </div>
 
@@ -436,6 +445,119 @@
         chart3.update();
     }
 
+    // ==== Mesin tema warna (dropdown) ====
+    // Sama seperti Production KPI Dashboard: tiap tema cukup didefinisikan lewat
+    // 1 warna aksen utama + 1 warna aksen kedua, warna dasar (bg/panel/border)
+    // dihitung otomatis dari hue warna aksen tsb — untuk mode gelap & terang.
+    function hexToRgb(hex){
+        hex = hex.replace("#","");
+        if(hex.length===3) hex = hex.split("").map(c=>c+c).join("");
+        const n = parseInt(hex,16);
+        return { r:(n>>16)&255, g:(n>>8)&255, b:n&255 };
+    }
+    function rgbToHsl(r,g,b){
+        r/=255; g/=255; b/=255;
+        const max=Math.max(r,g,b), min=Math.min(r,g,b);
+        let h,s,l=(max+min)/2;
+        if(max===min){ h=s=0; }
+        else{
+            const d=max-min;
+            s = l>0.5 ? d/(2-max-min) : d/(max+min);
+            switch(max){
+                case r: h=(g-b)/d+(g<b?6:0); break;
+                case g: h=(b-r)/d+2; break;
+                default: h=(r-g)/d+4;
+            }
+            h/=6;
+        }
+        return { h:h*360, s:s*100, l:l*100 };
+    }
+    function hslToHex(h,s,l){
+        h=((h%360)+360)%360; s=Math.max(0,Math.min(100,s))/100; l=Math.max(0,Math.min(100,l))/100;
+        const c=(1-Math.abs(2*l-1))*s, x=c*(1-Math.abs((h/60)%2-1)), m=l-c/2;
+        let r=0,g=0,b=0;
+        if(h<60){r=c;g=x;b=0;} else if(h<120){r=x;g=c;b=0;} else if(h<180){r=0;g=c;b=x;}
+        else if(h<240){r=0;g=x;b=c;} else if(h<300){r=x;g=0;b=c;} else {r=c;g=0;b=x;}
+        const toHex=v=> Math.round((v+m)*255).toString(16).padStart(2,"0");
+        return "#"+toHex(r)+toHex(g)+toHex(b);
+    }
+    function rgbaFromHex(hex, alpha){ const {r,g,b}=hexToRgb(hex); return `rgba(${r},${g},${b},${alpha})`; }
+    function hslFromHex(hex){ const {r,g,b}=hexToRgb(hex); return rgbToHsl(r,g,b); }
+
+    const THEMES = [
+        { id:"default", label:"Default (Cyan)" }, // pakai CSS bawaan
+        { id:"violet", label:"Violet Majesty", accent:"#7A5CFA", line:"#FF6E40" },
+        { id:"crimson", label:"Red Chicory", accent:"#A73D4D", line:"#C9A227" },
+        { id:"forest", label:"Midnight Forest", accent:"#053B2D", line:"#ADC6E4" },
+        { id:"gold", label:"Sweet Curry", accent:"#D9A441", line:"#7A5CFA" },
+        { id:"oxford", label:"Oxford Blue", accent:"#002147", line:"#D2B48C" },
+        { id:"retro", label:"Retro Sunset", accent:"#D23D2D", line:"#F9C065" },
+        { id:"pomegranate", label:"Pomegranate", accent:"#E64B2A", line:"#8DD0FC" },
+        { id:"dynamicblack", label:"Dynamic Black", accent:"#FF5A1F", line:"#D9C9A3" },
+        { id:"rustic", label:"Rustic Indulgence", accent:"#B92216", line:"#B7C6B8" },
+        { id:"earthline", label:"Rustic Earthline", accent:"#783E30", line:"#B39070" },
+        { id:"magma", label:"Magma Mist", accent:"#F06F0E", line:"#077771" },
+        { id:"cosmicviolet", label:"Cosmic Violet & Solar Blaze", accent:"#400086", line:"#FF6E00" },
+        { id:"sunbound", label:"Sunbound Majesty", accent:"#69326E", line:"#EED455" },
+        { id:"darkred", label:"Cream & Dark Red", accent:"#941704", line:"#ADC6E4" }
+    ];
+
+    function computeThemeVars(theme, mode){
+        const h = hslFromHex(theme.accent).h;
+        const isDark = mode === "dark";
+        const vars = {
+            "--accent": theme.accent,
+            "--accent-dim": rgbaFromHex(theme.accent, isDark ? 0.16 : 0.13),
+            "--accent-2": theme.line,
+            "--accent-3": theme.line
+        };
+        if(isDark){
+            vars["--bg"] = hslToHex(h, 22, 6);
+            vars["--panel"] = hslToHex(h, 20, 10);
+            vars["--panel-2"] = hslToHex(h, 18, 13);
+            vars["--border"] = hslToHex(h, 14, 21);
+            vars["--grid-line"] = "rgba(255,255,255,0.10)";
+            vars["--stripe"] = "rgba(255,255,255,0.035)";
+            vars["--topbar-bg"] = rgbaFromHex(vars["--bg"], 0.88);
+        }else{
+            vars["--bg"] = hslToHex(h, 35, 97);
+            vars["--panel"] = "#FFFFFF";
+            vars["--panel-2"] = hslToHex(h, 30, 95);
+            vars["--border"] = hslToHex(h, 24, 80);
+            vars["--grid-line"] = "rgba(0,0,0,0.10)";
+            vars["--stripe"] = "rgba(0,0,0,0.025)";
+            vars["--topbar-bg"] = rgbaFromHex(vars["--bg"], 0.88);
+            // garis grafik dibuat lebih gelap di light mode supaya tetap kontras di atas putih
+            const lineHsl = hslFromHex(theme.line);
+            vars["--accent-2"] = hslToHex(lineHsl.h, Math.max(lineHsl.s,40), Math.min(lineHsl.l,45));
+            vars["--accent-3"] = vars["--accent-2"];
+        }
+        return vars;
+    }
+
+    let currentTheme = "default";
+    function applyTheme(themeId, mode){
+        const theme = THEMES.find(t=> t.id===themeId) || THEMES[0];
+        currentTheme = theme.id;
+        if(theme.id === "default"){
+            ["--accent","--accent-dim","--accent-2","--accent-3","--bg","--panel","--panel-2",
+             "--border","--grid-line","--stripe","--topbar-bg"
+            ].forEach(prop=> document.body.style.removeProperty(prop));
+            return;
+        }
+        const vars = computeThemeVars(theme, mode);
+        Object.entries(vars).forEach(([k,v])=> document.body.style.setProperty(k, v));
+    }
+    function populateThemeSelect(){
+        const select = document.getElementById("themeSelect");
+        select.innerHTML = THEMES.map(t=> `<option value="${t.id}">${t.label}</option>`).join("");
+        select.value = currentTheme;
+    }
+    document.getElementById("themeSelect").addEventListener("change", function(e){
+        applyTheme(e.target.value, chartMode);
+        applyChartTheme();
+    });
+
     // ==== Tema (dark/light) untuk grafik Chart.js ====
     // Canvas tidak otomatis ikut CSS variable, jadi warnanya diambil manual dari
     // CSS variable yang aktif setiap kali mode diganti, lalu semua chart di-update().
@@ -447,20 +569,41 @@
             text: v('--text-dim', '#ffffff'),
             grid: v('--grid-line', '#444444'),
             accent: v('--accent', '#00d4ff'),
-            accent2: v('--accent-2', '#ff5fa2')
+            accent2: v('--accent-2', '#ff5fa2'),
+            accent3: v('--accent-3', '#ffc107')
         };
+    }
+    function hexToRgba(hex, alpha){
+        hex = hex.trim();
+        if(hex.startsWith('rgb')) return hex; // sudah rgba/rgb, dipakai apa adanya
+        hex = hex.replace('#','');
+        if(hex.length===3) hex = hex.split('').map(c=>c+c).join('');
+        const n = parseInt(hex,16);
+        const r=(n>>16)&255, g=(n>>8)&255, b=n&255;
+        return `rgba(${r},${g},${b},${alpha})`;
     }
     function applyChartTheme(){
         const c = chartColors();
-        [chart1, chart2].forEach(chart=>{
-            if(!chart) return;
-            chart.options.scales.x.ticks.color = c.text;
-            chart.options.scales.x.grid.color = c.grid;
-            chart.options.scales.y.ticks.color = c.text;
-            chart.options.scales.y.grid.color = c.grid;
-            chart.options.plugins.legend.labels.color = c.text;
-            chart.update();
-        });
+        if(chart1){
+            chart1.options.scales.x.ticks.color = c.text;
+            chart1.options.scales.x.grid.color = c.grid;
+            chart1.options.scales.y.ticks.color = c.text;
+            chart1.options.scales.y.grid.color = c.grid;
+            chart1.options.plugins.legend.labels.color = c.text;
+            chart1.data.datasets[0].borderColor = c.accent;
+            chart1.data.datasets[0].backgroundColor = hexToRgba(c.accent, 0.12);
+            chart1.update();
+        }
+        if(chart2){
+            chart2.options.scales.x.ticks.color = c.text;
+            chart2.options.scales.x.grid.color = c.grid;
+            chart2.options.scales.y.ticks.color = c.text;
+            chart2.options.scales.y.grid.color = c.grid;
+            chart2.options.plugins.legend.labels.color = c.text;
+            chart2.data.datasets[0].borderColor = c.accent3;
+            chart2.data.datasets[0].backgroundColor = hexToRgba(c.accent3, 0.12);
+            chart2.update();
+        }
         if(chart3){
             chart3.options.scales.x.ticks.color = c.text;
             chart3.options.scales.x.grid.color = c.grid;
@@ -468,6 +611,10 @@
             chart3.options.scales.y.grid.color = c.grid;
             chart3.options.scales.y1.ticks.color = c.accent2;
             chart3.options.plugins.legend.labels.color = c.text;
+            chart3.data.datasets[0].borderColor = c.accent;
+            chart3.data.datasets[0].backgroundColor = hexToRgba(c.accent, 0.08);
+            chart3.data.datasets[1].borderColor = c.accent2;
+            chart3.data.datasets[1].backgroundColor = hexToRgba(c.accent2, 0.08);
             chart3.update();
         }
     }
@@ -482,6 +629,7 @@
         chartMode = chartMode === 'dark' ? 'light' : 'dark';
         document.body.setAttribute('data-mode', chartMode);
         document.documentElement.setAttribute('data-bs-theme', chartMode);
+        applyTheme(currentTheme, chartMode);
         applyModeUI();
         applyChartTheme();
     });
@@ -524,8 +672,8 @@
         });
 
         applyModeUI();
-
-        // Muat data otomatis dari Google Sheet saat halaman dibuka
+        populateThemeSelect();
+        applyChartTheme();
         loadFromSheet(false);
 
         // Auto-refresh berkala
