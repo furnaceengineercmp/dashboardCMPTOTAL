@@ -10,6 +10,8 @@
     <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
     <script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
     <style>
         :root{ --font-body: 'Segoe UI', sans-serif; }
 
@@ -120,6 +122,66 @@
         .dataTables_wrapper .page-item.active .page-link{ background-color: var(--accent); border-color: var(--accent); color: #04141B; }
         .dataTables_wrapper .page-item.disabled .page-link{ background-color: var(--panel); color: var(--text-faint); }
 
+        /* ===== View toggle & Dashboard Produksi (gaya Excel) ===== */
+        .view-toggle{ display:flex; gap:4px; background: var(--panel); border:1px solid var(--border); border-radius:8px; padding:4px; }
+        .view-toggle button{
+            border:none; background:transparent; color:var(--text-dim); font-size:.8rem; font-weight:600;
+            padding:7px 14px; border-radius:6px; cursor:pointer; transition:.15s ease; white-space:nowrap;
+        }
+        .view-toggle button.active{ background: var(--accent); color:#04141B; }
+        .view-toggle button:not(.active):hover{ color:var(--text); }
+
+        .excel-banner{
+            background: var(--panel); border:1px solid var(--border); border-left:6px solid var(--accent);
+            border-radius: 12px; padding: 16px 22px; margin-bottom: 20px;
+            display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;
+        }
+        .excel-banner h2{ margin:0; font-weight:800; letter-spacing:1px; color:var(--text); font-size:1.25rem; }
+        .excel-banner .excel-date{ font-weight:600; color:var(--accent); font-size:.95rem; margin-top:2px; }
+        .excel-panel{ background: var(--panel); border:1px solid var(--border); border-radius:12px; padding:16px; margin-bottom:20px; height:100%; }
+        .excel-panel-title{
+            background: var(--panel-2); border-left:5px solid var(--accent); font-weight:700; letter-spacing:.5px;
+            padding:8px 12px; border-radius:6px; margin-bottom:14px; font-size:.85rem; text-transform:uppercase;
+        }
+        .excel-stat-row{ display:flex; flex-wrap:wrap; gap:12px; margin-bottom:10px; }
+        .excel-stat{ background: var(--panel-2); border:1px solid var(--border); border-radius:8px; padding:10px 14px; flex:1; min-width:130px; }
+        .excel-stat .lbl{ font-size:.66rem; color:var(--text-dim); text-transform:uppercase; letter-spacing:.5px; margin-bottom:4px; }
+        .excel-stat .val{ font-size:1.3rem; font-weight:800; color:var(--accent); }
+        .excel-stat .unit{ font-size:.7rem; color:var(--text-dim); margin-left:4px; font-weight:500; }
+        .excel-achieve{ font-size:1.5rem; font-weight:800; color:var(--accent-2); }
+        #ladleList{ width:100%; background: var(--panel-2); border:1px solid var(--border); color:var(--text); border-radius:8px; padding:12px; font-size:.85rem; line-height:1.7; }
+        .excel-note{ font-size:.7rem; color:var(--text-faint); font-style:italic; margin-top:6px; }
+        .excel-chart-container{ height:190px; margin-top:12px; }
+        input[type="date"]#excelDateSelect{ color-scheme: light dark; }
+
+        .excel-donut-wrap{ position:relative; width:150px; height:150px; margin:0 auto; }
+        .excel-donut-center{
+            position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+            font-size:1.5rem; font-weight:800; color:var(--accent); text-align:center; pointer-events:none;
+        }
+        .excel-donut-legend{ display:flex; justify-content:center; gap:14px; margin-top:8px; font-size:.72rem; color:var(--text-dim); }
+        .excel-donut-legend span.dot{ display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:4px; }
+        .excel-drill-list{ display:flex; flex-direction:column; gap:6px; }
+        .excel-drill-item{ background:var(--panel-2); border:1px solid var(--border); border-radius:6px; padding:6px 10px; font-size:.75rem; display:flex; justify-content:space-between; }
+        .excel-target-badge{
+            display:inline-flex; align-items:center; justify-content:center; min-width:52px; height:52px; border-radius:50%;
+            background: var(--panel-2); border:2px solid var(--accent); font-weight:800; font-size:.85rem; color:var(--accent);
+        }
+        .excel-pack-row{ display:flex; align-items:center; gap:14px; background:var(--panel-2); border:1px solid var(--border); border-radius:10px; padding:10px 14px; flex:1; min-width:220px; }
+        .excel-pack-row .pk-name{ font-size:.7rem; color:var(--text-dim); text-transform:uppercase; }
+        .excel-pack-row .pk-val{ font-size:1.3rem; font-weight:800; color:var(--accent); }
+        .excel-export-bar{ display:flex; gap:8px; }
+        .excel-export-bar button{ font-size:.78rem; }
+
+        @media print{
+            .view-toggle, .topbar, #viewAnalytics, .excel-export-bar, #excelDateSelect, .excel-note,
+            .row > .col-auto, select#sheetYearSelect { display:none !important; }
+            body{ background:#fff !important; color:#000 !important; }
+            .excel-panel{ break-inside: avoid; border:1px solid #ccc !important; background:#fff !important; }
+            .excel-stat{ background:#f4f6f9 !important; border:1px solid #ddd !important; }
+            .excel-panel-title{ background:#eef2f6 !important; color:#000 !important; }
+        }
+
         @media (max-width: 576px){
             .brand-text h1{ font-size: 1.02rem; }
             .brand-text p{ margin-left: 17px; }
@@ -139,6 +201,10 @@
         <p>PT CERIA METALINDO PRIMA</p>
       </div>
     </div>
+    <div class="view-toggle" role="tablist">
+      <button type="button" id="btnViewAnalytics" class="active" onclick="switchView('analytics')">📈 Analitik Data</button>
+      <button type="button" id="btnViewExcel" onclick="switchView('excel')">🏭 Dashboard Produksi</button>
+    </div>
     <button id="modeToggle" class="mode-toggle" type="button" title="Ganti mode gelap/terang">
       <span id="modeToggleIcon">🌙</span><span id="modeToggleLabel">Dark</span>
     </button>
@@ -150,6 +216,7 @@
 
 <div class="container-fluid py-4">
 
+<div id="viewAnalytics">
     <!-- Panel KPI 6 Kolom -->
     <div class="row">
         <div class="col-md-2"><div class="card kpi-card"><div>Korelasi Grafik 3</div><div id="kpiCorrelation" class="kpi-value" style="font-size:0.78rem; font-weight:600; line-height:1.3;">-</div></div></div>
@@ -165,6 +232,12 @@
             <div class="col-auto"><input type="date" id="startDate" class="form-control"></div>
             <div class="col-auto"><input type="date" id="endDate" class="form-control"></div>
             <div class="col-auto"><select id="timeGrouping" class="form-select"><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option></select></div>
+            <div class="col-auto">
+                <select id="sheetYearSelect" class="form-select" title="Sumber data (tahun)" onchange="loadFromSheet(true)">
+                    <option value="Data 2026">Data 2026</option>
+                    <option value="Data 2025">Data 2025</option>
+                </select>
+            </div>
             <div class="col-auto"><button class="btn btn-primary" onclick="processData()">Apply Filter</button></div>
             <div class="col-auto"><button class="btn btn-secondary" onclick="resetData()">Reset</button></div>
             <div class="col-auto"><button class="btn btn-info" onclick="loadFromSheet(true)">🔄 Sync Google Sheet</button></div>
@@ -209,6 +282,240 @@
         <h5>Ringkasan Statistik</h5>
         <div class="table-responsive"><table class="table table-bordered table-sm"><thead id="statHead"></thead><tbody id="statBody"></tbody></table></div>
     </div>
+</div><!-- /viewAnalytics -->
+
+<div id="viewExcel" style="display:none;">
+
+  <div class="excel-banner">
+    <div>
+      <h2>FURNACE DAILY PRODUCTION REPORT</h2>
+      <div class="excel-date" id="excelDateLabel">-</div>
+    </div>
+    <div class="d-flex align-items-end gap-3 flex-wrap">
+      <div>
+        <label class="form-label small text-secondary mb-1 d-block">Pilih Tanggal (Kalender)</label>
+        <input type="date" id="excelDateSelect" class="form-control form-control-sm" onchange="renderExcelDashboard()" style="min-width:170px;">
+      </div>
+      <div class="excel-export-bar">
+        <button class="btn btn-sm btn-outline-secondary" onclick="exportExcelPDF()">🖨️ Export PDF</button>
+        <button class="btn btn-sm btn-outline-secondary" id="btnExportPpt" onclick="exportExcelPPT()">📊 Export PPT</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="col-lg-6">
+      <div class="excel-panel">
+        <div class="excel-panel-title">⚡ Power</div>
+        <div class="excel-stat-row">
+          <div class="excel-stat"><div class="lbl">Power (Harian)</div><div class="val" id="excPower">-</div><span class="unit">MW</span></div>
+          <div class="excel-stat"><div class="lbl">Power Avg MTD</div><div class="val" id="excPowerMtd">-</div><span class="unit">MW</span></div>
+        </div>
+        <div class="excel-stat-row">
+          <div class="excel-stat"><div class="lbl">Power Utilization (% of Full Capacity)</div><div class="val" id="excPowerUtil">-</div><span class="unit">%</span></div>
+          <div class="excel-stat"><div class="lbl">Power On-Time</div><div class="val" id="excPowerOnTime">-</div><span class="unit">Hours</span></div>
+        </div>
+        <div class="excel-chart-container"><canvas id="excChartPower"></canvas></div>
+      </div>
+    </div>
+    <div class="col-lg-6">
+      <div class="excel-panel">
+        <div class="excel-panel-title">🧱 Material Input</div>
+        <div class="excel-stat-row">
+          <div class="excel-stat"><div class="lbl">Calcine Consumption</div><div class="val" id="excCalcine">-</div><span class="unit">Ton</span></div>
+          <div class="excel-stat"><div class="lbl">GHE</div><div class="val" id="excGhe">-</div><span class="unit">KWH/Ton</span></div>
+        </div>
+        <div class="excel-stat-row">
+          <div class="excel-stat"><div class="lbl">Electrode Paste (Total 6 Electrode)</div><div class="val" id="excPaste">-</div><span class="unit">Ton</span></div>
+          <div class="excel-stat"><div class="lbl">Recycle Scrap</div><div class="val" id="excScrapRecycle">-</div><span class="unit">Ton</span></div>
+        </div>
+        <div class="excel-note">Grafik: konsumsi pasta per elektroda (1–6) pada tanggal terpilih.</div>
+        <div class="excel-chart-container"><canvas id="excChartMaterial"></canvas></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="col-lg-6">
+      <div class="excel-panel">
+        <div class="excel-panel-title">🌡️ Temperature Profile</div>
+        <div class="excel-stat-row">
+          <div class="excel-stat"><div class="lbl">Bottom</div><div class="val" id="excTempBottom">-</div><span class="unit">°C</span></div>
+          <div class="excel-stat"><div class="lbl">Freeboard</div><div class="val" id="excTempFreeboard">-</div><span class="unit">°C</span></div>
+          <div class="excel-stat"><div class="lbl">Sidewall</div><div class="val" id="excTempSidewall">-</div><span class="unit">°C</span></div>
+        </div>
+        <div class="excel-chart-container"><canvas id="excChartTemp"></canvas></div>
+      </div>
+    </div>
+    <div class="col-lg-6">
+      <div class="excel-panel">
+        <div class="excel-panel-title">⛽ Diesel &amp; Electrode Paste (MTD)</div>
+        <div class="excel-stat-row">
+          <div class="excel-stat"><div class="lbl">Diesel Avg Harian</div><div class="val" id="excDieselAvg">-</div><span class="unit">KL</span></div>
+          <div class="excel-stat"><div class="lbl">Diesel Total MTD</div><div class="val" id="excDieselTotal">-</div><span class="unit">KL</span></div>
+        </div>
+        <div class="excel-stat-row">
+          <div class="excel-stat"><div class="lbl">Paste Avg Harian</div><div class="val" id="excPasteAvg">-</div><span class="unit">Kg/MWH</span></div>
+          <div class="excel-stat"><div class="lbl">Paste Total MTD</div><div class="val" id="excPasteTotal">-</div><span class="unit">Ton</span></div>
+        </div>
+        <div class="excel-chart-container"><canvas id="excChartDiesel"></canvas></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="col-lg-6">
+      <div class="excel-panel">
+        <div class="excel-panel-title">🧊 Skimming Record</div>
+        <div class="row g-3">
+          <div class="col-5 text-center">
+            <div class="lbl mb-1">Daily Skimming Activities</div>
+            <div class="excel-donut-wrap">
+              <canvas id="excDonutSkimming"></canvas>
+              <div class="excel-donut-center" id="excSkimmingCenter">-</div>
+            </div>
+            <div class="excel-donut-legend">
+              <span><span class="dot" style="background:var(--accent)"></span>North</span>
+              <span><span class="dot" style="background:var(--accent-2)"></span>South</span>
+            </div>
+          </div>
+          <div class="col-7">
+            <div class="excel-stat-row">
+              <div class="excel-stat"><div class="lbl">Temp Skimming</div><div class="val" id="excTempSkimming">-</div><span class="unit">°C</span></div>
+              <div class="excel-stat"><div class="lbl">Ni Loss Average</div><div class="val" id="excNiLoss">-</div><span class="unit">%</span></div>
+            </div>
+            <div class="excel-stat-row">
+              <div class="excel-stat"><div class="lbl">S/M Average</div><div class="val" id="excSmRatio">-</div></div>
+              <div class="excel-stat"><div class="lbl">%Fe Average</div><div class="val" id="excFeAvg">-</div><span class="unit">%</span></div>
+            </div>
+            <div class="excel-stat-row">
+              <div class="excel-stat"><div class="lbl">Viscosity Average</div><div class="val" id="excViscosity">-</div><span class="unit">Pa.S</span></div>
+              <div class="excel-stat"><div class="lbl">Slag Reclaim</div><div class="val" id="excSlagReclaim">-</div><span class="unit">Ton</span></div>
+            </div>
+            <div class="excel-stat-row">
+              <div class="excel-stat"><div class="lbl">Skimming Rate</div><div class="val" id="excSkimmingRate">-</div><span class="unit">TPH</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="excel-note">Grafik tren jumlah skimming (MTD):</div>
+        <div class="excel-chart-container"><canvas id="excChartSkimming"></canvas></div>
+      </div>
+    </div>
+    <div class="col-lg-6">
+      <div class="excel-panel">
+        <div class="excel-panel-title">🔥 Tapping Record</div>
+        <div class="row g-3">
+          <div class="col-5 text-center">
+            <div class="lbl mb-1">Daily Tapping Activities</div>
+            <div class="excel-donut-wrap">
+              <canvas id="excDonutTapping"></canvas>
+              <div class="excel-donut-center" id="excTappingCenter">-</div>
+            </div>
+            <div class="excel-donut-legend">
+              <span><span class="dot" style="background:var(--accent)"></span>North</span>
+              <span><span class="dot" style="background:var(--accent-2)"></span>South</span>
+            </div>
+          </div>
+          <div class="col-7">
+            <div class="excel-stat-row">
+              <div class="excel-stat"><div class="lbl">Tapping Temp Average</div><div class="val" id="excTempTapping">-</div><span class="unit">°C</span></div>
+              <div class="excel-stat"><div class="lbl">Shotting Temp Average</div><div class="val" id="excTempShotting">-</div><span class="unit">°C</span></div>
+            </div>
+            <div class="excel-stat-row">
+              <div class="excel-stat"><div class="lbl">Nickel Grade</div><div class="val" id="excNiGrade">-</div><span class="unit">%</span></div>
+              <div class="excel-stat"><div class="lbl">Scrap Generation</div><div class="val" id="excScrapGen">-</div><span class="unit">Ton</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="row g-3 mt-1">
+          <div class="col-6">
+            <div class="lbl mb-1">Tapping Drill Depth <span class="excel-note">(Standard: 85–90cm)</span></div>
+            <div class="excel-drill-list">
+              <div class="excel-drill-item"><span>1</span><span id="excDrill1">-</span></div>
+              <div class="excel-drill-item"><span>2</span><span id="excDrill2">-</span></div>
+              <div class="excel-drill-item"><span>3</span><span id="excDrill3">-</span></div>
+              <div class="excel-drill-item"><span>4</span><span id="excDrill4">-</span></div>
+            </div>
+          </div>
+          <div class="col-6">
+            <div class="lbl mb-1">FeNi / Ni Packaged Daily</div>
+            <div class="excel-pack-row mb-2">
+              <div><div class="pk-name">FeNi Packed</div><div class="pk-val"><span id="excFeniPack">-</span> <span class="unit">Ton</span></div></div>
+              <div class="excel-target-badge" id="excFeniTargetPct">-</div>
+            </div>
+            <div class="excel-pack-row">
+              <div><div class="pk-name">Ni Packed</div><div class="pk-val"><span id="excNiPack">-</span> <span class="unit">Ton</span></div></div>
+              <div class="excel-target-badge" id="excNiTargetPct">-</div>
+            </div>
+          </div>
+        </div>
+        <div class="excel-chart-container"><canvas id="excChartTapping"></canvas></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="col-lg-6">
+      <div class="excel-panel">
+        <div class="excel-panel-title">📦 Ferronickel Production (MTD)</div>
+        <div class="excel-stat-row">
+          <div class="excel-stat"><div class="lbl">MTD Production</div><div class="val" id="excFeniMtd">-</div><span class="unit">MT</span></div>
+          <div class="excel-stat"><div class="lbl">Avg Production Daily</div><div class="val" id="excFeniAvg">-</div><span class="unit">MT</span></div>
+          <div class="excel-stat"><div class="lbl">Achievement</div><div class="excel-achieve" id="excFeniAchieve">-</div></div>
+        </div>
+        <div class="row g-2 align-items-center mt-1">
+          <div class="col-auto small text-secondary">Target Bulanan (Ton):</div>
+          <div class="col-auto"><input type="number" id="excFeniTargetInput" class="form-control form-control-sm" style="width:110px" value="5193" onchange="renderExcelDashboard()"></div>
+          <div class="col-auto small text-secondary">Target Harian (Ton):</div>
+          <div class="col-auto"><input type="number" id="excFeniDailyTargetInput" class="form-control form-control-sm" style="width:100px" value="167.5" onchange="renderExcelDashboard()"></div>
+        </div>
+        <div class="excel-chart-container" style="height:220px;"><canvas id="excChartFeni"></canvas></div>
+      </div>
+    </div>
+    <div class="col-lg-6">
+      <div class="excel-panel">
+        <div class="excel-panel-title">📦 Nickel Production (MTD)</div>
+        <div class="excel-stat-row">
+          <div class="excel-stat"><div class="lbl">MTD Production</div><div class="val" id="excNiMtd">-</div><span class="unit">MT</span></div>
+          <div class="excel-stat"><div class="lbl">Avg Production Daily</div><div class="val" id="excNiAvg">-</div><span class="unit">MT</span></div>
+          <div class="excel-stat"><div class="lbl">Achievement</div><div class="excel-achieve" id="excNiAchieve">-</div></div>
+        </div>
+        <div class="row g-2 align-items-center mt-1">
+          <div class="col-auto small text-secondary">Target Bulanan (Ton):</div>
+          <div class="col-auto"><input type="number" id="excNiTargetInput" class="form-control form-control-sm" style="width:110px" value="1142" onchange="renderExcelDashboard()"></div>
+          <div class="col-auto small text-secondary">Target Harian (Ton):</div>
+          <div class="col-auto"><input type="number" id="excNiDailyTargetInput" class="form-control form-control-sm" style="width:100px" value="36.9" onchange="renderExcelDashboard()"></div>
+        </div>
+        <div class="excel-chart-container" style="height:220px;"><canvas id="excChartNi"></canvas></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="col-lg-12">
+      <div class="excel-panel">
+        <div class="excel-panel-title">📈 Power Average - Calcine Consume - GHE</div>
+        <div class="row g-2 align-items-center mb-1">
+          <div class="col-auto small text-secondary">GHE Target (KWh/t):</div>
+          <div class="col-auto"><input type="number" id="excGheTargetInput" class="form-control form-control-sm" style="width:110px" value="550" onchange="renderExcelDashboard()"></div>
+        </div>
+        <div class="excel-chart-container" style="height:260px;"><canvas id="excChartPowerCalcineGhe"></canvas></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="col-lg-12">
+      <div class="excel-panel">
+        <div class="excel-panel-title">🪣 Update Ladle Availability</div>
+        <textarea id="ladleList" rows="5" placeholder="Contoh:&#10;#2  On Progress Repair&#10;#5  Standby&#10;#6  Ready For Heating Up&#10;#7  Tapping progress (1x used)&#10;#8  Cooling Down"></textarea>
+        <div class="excel-note">Diisi manual — belum ada kolom status ladle di sheet Data.</div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /viewExcel -->
+
 </div>
 
 <script>
@@ -217,6 +524,88 @@
     // Contoh: "https://script.google.com/macros/s/AKfycb.../exec"
     const SHEET_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbwqCSlambWGv4YnCotSq3M0MyAQD2fqok-o59TqE_8pV_UGhws-ez31ud9b97Q_Kq7U/exec";
     const AUTO_REFRESH_MINUTES = 5; // set 0 untuk mematikan auto-refresh
+
+    // ==== Konfigurasi Dashboard Produksi (gaya Excel) ====
+    // Sistem ini mencocokkan nama kolom secara fleksibel (huruf besar/kecil, spasi, simbol diabaikan)
+    // supaya otomatis mengikuti header asli di sheet "Data 2026" / "Data 2025".
+    // Kalau ada panel yang masih tampil "-", tambahkan varian nama kolomnya di daftar kandidat berikut.
+    const EXCEL_FIELDS = {
+        power: ['Power Average', 'Daily Power Consumption', 'Power'],
+        powerMtdAvg: ['Running Average Power MTD'],
+        powerUtilization: ['PERCENTAGE COMPARE FULL POWER (%)', 'Power Utilization', 'Percentage Compare Full Power', '% Of Full Power'],
+        operatingTime: ['Operating Time', 'Power On Time'],
+        calcineTotal: ['Total calcine', 'Daily Calcine Consume', 'Calcine consume'],
+        ghe: ['GHE'],
+        scrapRecycle: ['Recycle scrap', 'SCRAP Recycle'],
+        tempBottom: ['Temp Bottom', 'Bottom Average Temperature', 'Bottom Temp', 'Bottom'],
+        tempFreeboard: ['Freeboard temp', 'Freeboard Average Temperature', 'Freeboard'],
+        tempSidewall: ['sidewall temp', 'Sidewall Average Temperature', 'Sidewall Temp', 'Sidewall'],
+        dieselConsume: ['Diesel consume', 'Diesel Consumption', 'Diesel'],
+        pasteAvg: ['Average Elec Cons', 'Paste consumtion', 'Electrode Paste Average', 'Paste Average'],
+        elec1: ['elec c1', 'elec1', 'Elec C1'],
+        elec2: ['elec c2', 'elec2', 'Elec C2'],
+        elec3: ['elec c3', 'elec3', 'Elec C3'],
+        elec4: ['elec c4', 'elec4', 'Elec C4'],
+        elec5: ['elec c5', 'elec5', 'Elec C5'],
+        elec6: ['elec c6', 'elec6', 'Elec C6'],
+        northSkim: ['North Skimm', 'North Skimming'],
+        southSkim: ['South Skimm', 'South Skimming'],
+        totalSkim: ['Total Skimm', 'Skimming', 'Total Skimming'],
+        tempSkimming: ['Temp Skimming', 'Temperature Average Skimming', 'Skimming Temperature Average'],
+        niLoss: ['NICKEL LOSS AVERAGE', 'Ni Loss', 'Nickel Loss Average'],
+        smRatio: ['S/M RATIO', 'S/M Average', 'S/M'],
+        feAvg: ['%Fe Average', 'Fe Average', 'Fe'],
+        viscosity: ['Viscosity Average', 'Viscosity'],
+        slagReclaim: ['Slag Reclaim'],
+        skimmingRate: ['Skimming Rate'],
+        northTap: ['North Tap', 'North Tapping'],
+        southTap: ['South Tap', 'South Tapping'],
+        totalTap: ['Total Tap', 'Tapping', 'Total Tapping'],
+        tempTapping: ['Temp Tapping', 'Tapping Temperature Average'],
+        tempShotting: ['Shotting Temperature Average', 'Temp Shotting', 'Shotting Temp'],
+        niGrade: ['Ni Grade/day', 'Nickel Grade', 'Ni Grade'],
+        scrapGenerate: ['Scrap Generate', 'Scrap Generation'],
+        feniTapped: ['Fe-Ni TAPPED', 'FeNi Tapped'],
+        drillDepth1: ['Drill Depth 1', 'Tapping Drill Depth 1'],
+        drillDepth2: ['Drill Depth 2', 'Tapping Drill Depth 2'],
+        drillDepth3: ['Drill Depth 3', 'Tapping Drill Depth 3'],
+        drillDepth4: ['Drill Depth 4', 'Tapping Drill Depth 4'],
+        feniPackage: ['FeNi Packed Daily', 'FeNi PACKAGED DAILY', 'FeNi Packed'],
+        niPackage: ['Ni Packed Daily', 'Ni PACKAGED DAILY', 'Ni Packed'],
+        niProduct: ['Ni Product'],
+        productPackage: ['Product package']
+    };
+
+    // Target bawaan (bisa diubah lewat input di panel; nilai ini hanya nilai awal)
+    const EXCEL_DEFAULT_TARGETS = {
+        feniMonthly: 5193, feniDaily: 167.5,
+        niMonthly: 1142, niDaily: 36.9,
+        gheTarget: 550
+    };
+
+    function normKey(s){ return String(s == null ? '' : s).toLowerCase().replace(/[^a-z0-9]/g, ''); }
+
+    // Cari nilai kolom di satu baris data berdasarkan daftar kemungkinan nama header (cocok longgar).
+    function getVal(row, fieldKey){
+        const candidates = EXCEL_FIELDS[fieldKey] || [fieldKey];
+        const keys = Object.keys(row);
+        for (const cand of candidates) {
+            const nc = normKey(cand);
+            const hit = keys.find(k => normKey(k) === nc);
+            if (hit) { const v = validNum(row[hit]); if (v !== null) return v; }
+        }
+        for (const cand of candidates) {
+            const nc = normKey(cand);
+            const hit = keys.find(k => normKey(k).includes(nc) || nc.includes(normKey(k)));
+            if (hit) { const v = validNum(row[hit]); if (v !== null) return v; }
+        }
+        return null;
+    }
+    function sumVals(row, fieldKeys){
+        let total = 0, any = false;
+        fieldKeys.forEach(k => { const v = getVal(row, k); if (v !== null) { total += v; any = true; } });
+        return any ? total : null;
+    }
 
     // Merapikan format tanggal apa pun (ISO timestamp, "1 Sep 2025", dll) jadi "yyyy-MM-dd"
     function normalizeDateKey(val) {
@@ -254,14 +643,19 @@
         }
         statusEl.innerText = 'Memuat data dari Google Sheet...';
         try {
-            const res = await fetch(SHEET_WEBAPP_URL + '?t=' + Date.now());
+            const sheetSel = document.getElementById('sheetYearSelect');
+            const sheetParam = sheetSel ? sheetSel.value : '';
+            const url = SHEET_WEBAPP_URL + '?t=' + Date.now() + (sheetParam ? '&sheet=' + encodeURIComponent(sheetParam) : '');
+            const res = await fetch(url);
             if (!res.ok) throw new Error('HTTP ' + res.status);
             const json = await res.json();
             if (!Array.isArray(json)) throw new Error('Format data tidak sesuai (bukan array)');
             rawData = json.map(item => ({ ...item, Date: normalizeDateKey(item.Date) }));
             processData();
+            populateExcelDateSelect();
+            if (document.getElementById('viewExcel').style.display !== 'none') renderExcelDashboard();
             const now = new Date();
-            statusEl.innerText = 'Tersinkron: ' + now.toLocaleTimeString('id-ID') + ' — ' + rawData.length + ' baris data.';
+            statusEl.innerText = 'Tersinkron (' + (sheetParam || 'default') + '): ' + now.toLocaleTimeString('id-ID') + ' — ' + rawData.length + ' baris data.';
         } catch (err) {
             statusEl.innerText = 'Gagal sinkron: ' + err.message;
             if (showAlertOnError) alert('Gagal memuat data dari Google Sheet:\n' + err.message + '\n\nPastikan URL Web App sudah benar dan sheet sudah di-deploy sebagai "Anyone can access".');
@@ -334,6 +728,333 @@
     }
 
     function resetData() { document.getElementById('startDate').value = ''; document.getElementById('endDate').value = ''; processData(); }
+
+    // ==== Export Dashboard Produksi ke PDF / PPT ====
+    function exportExcelPDF(){
+        window.print();
+    }
+
+    async function exportExcelPPT(){
+        const btn = document.getElementById('btnExportPpt');
+        const originalLabel = btn.innerText;
+        btn.disabled = true; btn.innerText = '⏳ Menyiapkan PPT...';
+        try {
+            const panels = Array.from(document.querySelectorAll('#viewExcel .excel-panel, #viewExcel .excel-banner'));
+            const pptx = new PptxGenJS();
+            pptx.defineLayout({ name: 'WIDE', width: 13.33, height: 7.5 });
+            pptx.layout = 'WIDE';
+            for (const panel of panels) {
+                const canvas = await html2canvas(panel, { backgroundColor: getComputedStyle(document.body).getPropertyValue('--panel') || '#ffffff', scale: 2 });
+                const imgData = canvas.toDataURL('image/png');
+                const slide = pptx.addSlide();
+                const ratio = canvas.height / canvas.width;
+                let w = 12.2, h = w * ratio;
+                if (h > 6.8) { h = 6.8; w = h / ratio; }
+                slide.addImage({ data: imgData, x: (13.33 - w) / 2, y: (7.5 - h) / 2, w, h });
+            }
+            const dateLabel = document.getElementById('excelDateLabel').innerText || 'dashboard';
+            await pptx.writeFile({ fileName: `Furnace_Daily_Report_${dateLabel}.pptx` });
+        } catch (err) {
+            alert('Gagal membuat PPT: ' + err.message);
+        } finally {
+            btn.disabled = false; btn.innerText = originalLabel;
+        }
+    }
+
+    // ==== Tab: Analitik Data <-> Dashboard Produksi (gaya Excel) ====
+    function switchView(view){
+        const isAnalytics = view === 'analytics';
+        document.getElementById('viewAnalytics').style.display = isAnalytics ? '' : 'none';
+        document.getElementById('viewExcel').style.display = isAnalytics ? 'none' : '';
+        document.getElementById('btnViewAnalytics').classList.toggle('active', isAnalytics);
+        document.getElementById('btnViewExcel').classList.toggle('active', !isAnalytics);
+        if (!isAnalytics) renderExcelDashboard();
+    }
+
+    function fmtNum(v, dec) { return (v === null || v === undefined || isNaN(v)) ? '-' : Number(v).toFixed(dec === undefined ? 1 : dec); }
+
+    function populateExcelDateSelect(){
+        const inp = document.getElementById('excelDateSelect');
+        if (!inp || !rawData.length) return;
+        const dates = [...new Set(rawData.map(r => r.Date))].filter(Boolean).sort();
+        if (!dates.length) return;
+        inp.min = dates[0];
+        inp.max = dates[dates.length - 1];
+        if (!inp.value || !dates.includes(inp.value)) inp.value = dates[dates.length - 1];
+    }
+
+    function renderExcelDashboard(){
+        if (!rawData.length) return;
+        populateExcelDateSelect();
+        const inp = document.getElementById('excelDateSelect');
+        const selDate = inp.value;
+        let row = rawData.find(r => r.Date === selDate);
+        if (!row) {
+            // Tanggal dipilih tidak ada datanya -> pakai tanggal tersedia terdekat sebelumnya
+            const avail = [...new Set(rawData.map(r => r.Date))].filter(Boolean).sort();
+            const earlier = avail.filter(dt => dt <= selDate).pop();
+            row = rawData.find(r => r.Date === (earlier || avail[avail.length - 1]));
+        }
+        if (!row) return;
+        document.getElementById('excelDateLabel').innerText = row.Date;
+
+        // ---- POWER ----
+        document.getElementById('excPower').innerText = fmtNum(getVal(row, 'power'));
+        document.getElementById('excPowerUtil').innerText = fmtNum(getVal(row, 'powerUtilization'), 0);
+        document.getElementById('excPowerOnTime').innerText = fmtNum(getVal(row, 'operatingTime'), 1);
+
+        // ---- MATERIAL INPUT ----
+        document.getElementById('excCalcine').innerText = fmtNum(getVal(row, 'calcineTotal'), 0);
+        document.getElementById('excGhe').innerText = fmtNum(getVal(row, 'ghe'), 0);
+        const pasteTotal = sumVals(row, ['elec1', 'elec2', 'elec3', 'elec4', 'elec5', 'elec6']);
+        document.getElementById('excPaste').innerText = fmtNum(pasteTotal, 1);
+        document.getElementById('excScrapRecycle').innerText = fmtNum(getVal(row, 'scrapRecycle'), 1);
+
+        // ---- TEMPERATURE PROFILE ----
+        document.getElementById('excTempBottom').innerText = fmtNum(getVal(row, 'tempBottom'), 0);
+        document.getElementById('excTempFreeboard').innerText = fmtNum(getVal(row, 'tempFreeboard'), 0);
+        document.getElementById('excTempSidewall').innerText = fmtNum(getVal(row, 'tempSidewall'), 0);
+
+        // ---- SKIMMING RECORD ----
+        const northSkim = getVal(row, 'northSkim'), southSkim = getVal(row, 'southSkim');
+        const totalSkim = getVal(row, 'totalSkim') !== null ? getVal(row, 'totalSkim') : ((northSkim || 0) + (southSkim || 0)) || null;
+        document.getElementById('excSkimmingCenter').innerText = totalSkim !== null ? fmtNum(totalSkim, 0) + 'x' : '-';
+        document.getElementById('excTempSkimming').innerText = fmtNum(getVal(row, 'tempSkimming'), 0);
+        document.getElementById('excNiLoss').innerText = fmtNum(getVal(row, 'niLoss'), 2);
+        document.getElementById('excSmRatio').innerText = fmtNum(getVal(row, 'smRatio'), 2);
+        document.getElementById('excFeAvg').innerText = fmtNum(getVal(row, 'feAvg'), 2);
+        document.getElementById('excViscosity').innerText = fmtNum(getVal(row, 'viscosity'), 2);
+        document.getElementById('excSlagReclaim').innerText = fmtNum(getVal(row, 'slagReclaim'), 0);
+        document.getElementById('excSkimmingRate').innerText = fmtNum(getVal(row, 'skimmingRate'), 0);
+
+        // ---- TAPPING RECORD ----
+        const northTap = getVal(row, 'northTap'), southTap = getVal(row, 'southTap');
+        const totalTap = getVal(row, 'totalTap') !== null ? getVal(row, 'totalTap') : ((northTap || 0) + (southTap || 0)) || null;
+        document.getElementById('excTappingCenter').innerText = totalTap !== null ? fmtNum(totalTap, 0) + 'x' : '-';
+        document.getElementById('excTempTapping').innerText = fmtNum(getVal(row, 'tempTapping'), 0);
+        document.getElementById('excTempShotting').innerText = fmtNum(getVal(row, 'tempShotting'), 0);
+        document.getElementById('excNiGrade').innerText = fmtNum(getVal(row, 'niGrade'), 1);
+        document.getElementById('excScrapGen').innerText = fmtNum(getVal(row, 'scrapGenerate'), 1);
+        document.getElementById('excDrill1').innerText = fmtNum(getVal(row, 'drillDepth1'), 0) + ' cm';
+        document.getElementById('excDrill2').innerText = fmtNum(getVal(row, 'drillDepth2'), 0) + ' cm';
+        document.getElementById('excDrill3').innerText = fmtNum(getVal(row, 'drillDepth3'), 0) + ' cm';
+        document.getElementById('excDrill4').innerText = fmtNum(getVal(row, 'drillDepth4'), 0) + ' cm';
+        const feniPackDaily = getVal(row, 'feniPackage');
+        const niPackDaily = getVal(row, 'niPackage');
+        document.getElementById('excFeniPack').innerText = fmtNum(feniPackDaily, 1);
+        document.getElementById('excNiPack').innerText = fmtNum(niPackDaily, 1);
+        const feniDailyTarget = parseFloat(document.getElementById('excFeniDailyTargetInput').value) || 0;
+        const niDailyTarget = parseFloat(document.getElementById('excNiDailyTargetInput').value) || 0;
+        document.getElementById('excFeniTargetPct').innerText = (feniPackDaily !== null && feniDailyTarget > 0) ? (feniPackDaily / feniDailyTarget * 100).toFixed(0) + '%' : '-';
+        document.getElementById('excNiTargetPct').innerText = (niPackDaily !== null && niDailyTarget > 0) ? (niPackDaily / niDailyTarget * 100).toFixed(0) + '%' : '-';
+
+        // ---- MTD (dari tanggal 1 bulan berjalan sampai tanggal terpilih) ----
+        const d = parseLocalDate(row.Date);
+        const y = d.getFullYear(), m = d.getMonth();
+        const mtdRows = rawData.filter(r => {
+            const rd = parseLocalDate(r.Date);
+            return rd.getFullYear() === y && rd.getMonth() === m && rd <= d;
+        });
+        const sumField = (key) => mtdRows.reduce((a, r) => { const v = getVal(r, key); return a + (v || 0); }, 0);
+        const avgField = (key) => { const vals = mtdRows.map(r => getVal(r, key)).filter(v => v !== null); return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null; };
+
+        document.getElementById('excPowerMtd').innerText = fmtNum(avgField('power'));
+        document.getElementById('excDieselAvg').innerText = fmtNum(avgField('dieselConsume'), 1);
+        document.getElementById('excDieselTotal').innerText = fmtNum(sumField('dieselConsume'), 1);
+        document.getElementById('excPasteAvg').innerText = fmtNum(avgField('pasteAvg'), 1);
+        const pasteTotalMtd = mtdRows.reduce((a, r) => a + (sumVals(r, ['elec1', 'elec2', 'elec3', 'elec4', 'elec5', 'elec6']) || 0), 0);
+        document.getElementById('excPasteTotal').innerText = fmtNum(pasteTotalMtd, 0);
+
+        // ---- PRODUCTION FERRONICKEL ----
+        const feniMtd = sumField('feniPackage') || sumField('productPackage');
+        const feniAvg = avgField('feniPackage') || avgField('productPackage');
+        document.getElementById('excFeniMtd').innerText = fmtNum(feniMtd, 0);
+        document.getElementById('excFeniAvg').innerText = fmtNum(feniAvg, 1);
+        const feniTarget = parseFloat(document.getElementById('excFeniTargetInput').value) || 0;
+        document.getElementById('excFeniAchieve').innerText = feniTarget > 0 ? (feniMtd / feniTarget * 100).toFixed(1) + '%' : '-';
+
+        // ---- PRODUCTION NICKEL ----
+        const niMtd = sumField('niPackage') || sumField('niProduct');
+        const niAvg = avgField('niPackage') || avgField('niProduct');
+        document.getElementById('excNiMtd').innerText = fmtNum(niMtd, 0);
+        document.getElementById('excNiAvg').innerText = fmtNum(niAvg, 1);
+        const niTarget = parseFloat(document.getElementById('excNiTargetInput').value) || 0;
+        document.getElementById('excNiAchieve').innerText = niTarget > 0 ? (niMtd / niTarget * 100).toFixed(1) + '%' : '-';
+
+        renderExcelCharts(mtdRows, row, { northSkim, southSkim, northTap, southTap });
+    }
+
+    // ==== Grafik-grafik panel Dashboard Produksi (gaya Excel) ====
+    let excChartPower, excChartMaterial, excChartTemp, excChartDiesel, excChartSkimming, excChartTapping,
+        excChartFeni, excChartNi, excChartPowerCalcineGhe, excDonutSkimming, excDonutTapping;
+
+    function destroyIfExists(ch){ if (ch) ch.destroy(); }
+
+    function excChartOpts(c, showLegend){
+        return {
+            responsive: true, maintainAspectRatio: false,
+            scales: {
+                x: { ticks: { color: c.text, maxRotation: 0, autoSkip: true, font: { size: 9 } }, grid: { color: c.grid } },
+                y: { ticks: { color: c.text, font: { size: 9 } }, grid: { color: c.grid } }
+            },
+            plugins: { legend: { display: !!showLegend, labels: { color: c.text, font: { size: 10 } } } }
+        };
+    }
+    function excDualAxisOpts(c){
+        return {
+            responsive: true, maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            scales: {
+                x: { ticks: { color: c.text, maxRotation: 0, autoSkip: true, font: { size: 9 } }, grid: { color: c.grid } },
+                y: { type: 'linear', position: 'left', ticks: { color: c.accent, font: { size: 9 } }, grid: { color: c.grid } },
+                y1: { type: 'linear', position: 'right', ticks: { color: c.accent2, font: { size: 9 } }, grid: { drawOnChartArea: false } }
+            },
+            plugins: { legend: { labels: { color: c.text, font: { size: 10 } } } }
+        };
+    }
+
+    // Plugin kecil untuk menulis teks di tengah donut chart
+    const centerTextPlugin = {
+        id: 'centerTextPlugin',
+        afterDraw(chart){
+            if (!chart.config._centerText) return;
+            const { ctx, chartArea: { width, height, top, left } } = chart;
+            ctx.save();
+            ctx.font = 'bold 14px sans-serif';
+            ctx.fillStyle = chart.config._centerColor || '#888';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(chart.config._centerText, left + width / 2, top + height / 2);
+            ctx.restore();
+        }
+    };
+
+    function buildDonut(canvasId, existingRef, north, south, c){
+        destroyIfExists(existingRef);
+        const hasData = (north !== null && north !== undefined) || (south !== null && south !== undefined);
+        const data = hasData ? [north || 0, south || 0] : [1, 0];
+        const chart = new Chart(document.getElementById(canvasId), {
+            type: 'doughnut',
+            data: { labels: ['North', 'South'], datasets: [{ data, backgroundColor: [c.accent, c.accent2], borderWidth: 0 }] },
+            options: {
+                responsive: true, maintainAspectRatio: false, cutout: '68%',
+                plugins: { legend: { display: false }, tooltip: { enabled: hasData } }
+            },
+            plugins: [centerTextPlugin]
+        });
+        return chart;
+    }
+
+    function renderExcelCharts(mtdRows, row, donutVals){
+        const c = chartColors();
+        const labels = mtdRows.map(r => r.Date.slice(5)); // MM-DD biar ringkas
+        const val = (r, key) => getVal(r, key);
+
+        // Donut Skimming & Tapping (nilai hari yang dipilih)
+        excDonutSkimming = buildDonut('excDonutSkimming', excDonutSkimming, donutVals.northSkim, donutVals.southSkim, c);
+        excDonutTapping = buildDonut('excDonutTapping', excDonutTapping, donutVals.northTap, donutVals.southTap, c);
+
+        destroyIfExists(excChartPower);
+        excChartPower = new Chart(document.getElementById('excChartPower'), {
+            type: 'line',
+            data: { labels, datasets: [{ label: 'Power (MW)', data: mtdRows.map(r => val(r, 'power')), borderColor: c.accent, backgroundColor: hexToRgba(c.accent, 0.15), fill: true, tension: .3, spanGaps: true, pointRadius: 2 }] },
+            options: excChartOpts(c)
+        });
+
+        destroyIfExists(excChartMaterial);
+        excChartMaterial = new Chart(document.getElementById('excChartMaterial'), {
+            type: 'bar',
+            data: {
+                labels: ['Elec 1', 'Elec 2', 'Elec 3', 'Elec 4', 'Elec 5', 'Elec 6'],
+                datasets: [{ label: 'Electrode Paste (Ton)', data: ['elec1', 'elec2', 'elec3', 'elec4', 'elec5', 'elec6'].map(k => getVal(row, k) || 0), backgroundColor: hexToRgba(c.accent, 0.55) }]
+            },
+            options: excChartOpts(c)
+        });
+
+        destroyIfExists(excChartTemp);
+        excChartTemp = new Chart(document.getElementById('excChartTemp'), {
+            type: 'line',
+            data: {
+                labels, datasets: [
+                    { label: 'Bottom', data: mtdRows.map(r => val(r, 'tempBottom')), borderColor: c.accent, tension: .3, spanGaps: true, pointRadius: 1.5 },
+                    { label: 'Freeboard', data: mtdRows.map(r => val(r, 'tempFreeboard')), borderColor: c.accent2, tension: .3, spanGaps: true, pointRadius: 1.5 },
+                    { label: 'Sidewall', data: mtdRows.map(r => val(r, 'tempSidewall')), borderColor: c.accent3, tension: .3, spanGaps: true, pointRadius: 1.5 }
+                ]
+            },
+            options: excChartOpts(c, true)
+        });
+
+        destroyIfExists(excChartDiesel);
+        excChartDiesel = new Chart(document.getElementById('excChartDiesel'), {
+            type: 'line',
+            data: {
+                labels, datasets: [
+                    { label: 'Diesel (KL)', data: mtdRows.map(r => val(r, 'dieselConsume')), borderColor: c.accent, yAxisID: 'y', tension: .3, spanGaps: true, pointRadius: 2 },
+                    { label: 'Paste (Kg/MWH)', data: mtdRows.map(r => val(r, 'pasteAvg')), borderColor: c.accent2, yAxisID: 'y1', tension: .3, spanGaps: true, pointRadius: 2 }
+                ]
+            },
+            options: excDualAxisOpts(c)
+        });
+
+        destroyIfExists(excChartSkimming);
+        excChartSkimming = new Chart(document.getElementById('excChartSkimming'), {
+            type: 'bar',
+            data: { labels, datasets: [{ label: 'Skimming (x)', data: mtdRows.map(r => val(r, 'totalSkim')), backgroundColor: hexToRgba(c.accent, 0.6) }] },
+            options: excChartOpts(c)
+        });
+
+        destroyIfExists(excChartTapping);
+        excChartTapping = new Chart(document.getElementById('excChartTapping'), {
+            data: {
+                labels, datasets: [
+                    { type: 'bar', label: 'Ni Product (Ton)', data: mtdRows.map(r => val(r, 'niProduct')), backgroundColor: hexToRgba(c.accent, 0.5), yAxisID: 'y' },
+                    { type: 'line', label: 'Temp Tapping (°C)', data: mtdRows.map(r => val(r, 'tempTapping')), borderColor: c.accent2, yAxisID: 'y1', tension: .3, spanGaps: true, pointRadius: 2 }
+                ]
+            },
+            options: excDualAxisOpts(c)
+        });
+
+        // ---- Kombo chart produksi: bar kumulatif (kanan) + line harian & rata-rata (kiri) + garis target harian ----
+        function buildProductionCombo(canvasId, existingRef, fieldKeys, dailyTarget){
+            let cum = 0;
+            const dailyData = mtdRows.map(r => { let v = null; for (const k of fieldKeys) { v = getVal(r, k); if (v !== null) break; } return v; });
+            const cumData = dailyData.map(v => { cum += (v || 0); return cum; });
+            const avgData = cumData.map((cv, idx) => cv / (idx + 1));
+            const targetLine = mtdRows.map((r, idx) => dailyTarget * (idx + 1) > 0 ? dailyTarget : dailyTarget);
+            destroyIfExists(existingRef);
+            return new Chart(document.getElementById(canvasId), {
+                data: {
+                    labels, datasets: [
+                        { type: 'bar', label: 'Total Production (kumulatif)', data: cumData, backgroundColor: hexToRgba(c.accent, 0.35), yAxisID: 'y1' },
+                        { type: 'line', label: 'Daily Production', data: dailyData, borderColor: c.accent2, yAxisID: 'y', tension: .25, spanGaps: true, pointRadius: 2 },
+                        { type: 'line', label: 'Avg. Production', data: avgData, borderColor: c.accent3, yAxisID: 'y', tension: .25, pointRadius: 1.5 },
+                        { type: 'line', label: 'Daily Target', data: targetLine, borderColor: c.accent, borderDash: [6, 4], yAxisID: 'y', pointRadius: 0 }
+                    ]
+                },
+                options: excDualAxisOpts(c)
+            });
+        }
+        const feniDailyTarget = parseFloat(document.getElementById('excFeniDailyTargetInput').value) || 0;
+        const niDailyTarget = parseFloat(document.getElementById('excNiDailyTargetInput').value) || 0;
+        excChartFeni = buildProductionCombo('excChartFeni', excChartFeni, ['feniPackage', 'productPackage'], feniDailyTarget);
+        excChartNi = buildProductionCombo('excChartNi', excChartNi, ['niPackage', 'niProduct'], niDailyTarget);
+
+        // ---- Panel khusus: Power Average - Calcine Consume - GHE (gambar 9) ----
+        const gheTarget = parseFloat(document.getElementById('excGheTargetInput').value) || 0;
+        destroyIfExists(excChartPowerCalcineGhe);
+        excChartPowerCalcineGhe = new Chart(document.getElementById('excChartPowerCalcineGhe'), {
+            data: {
+                labels, datasets: [
+                    { type: 'bar', label: 'GHE (KWH/Ton)', data: mtdRows.map(r => val(r, 'ghe')), backgroundColor: hexToRgba(c.accent, 0.55), yAxisID: 'y1' },
+                    { type: 'line', label: 'Power Average (MW)', data: mtdRows.map(r => val(r, 'power')), borderColor: c.accent2, yAxisID: 'y', tension: .3, spanGaps: true, pointRadius: 2 },
+                    { type: 'line', label: 'Running Average Power MTD (MW)', data: mtdRows.map(r => val(r, 'powerMtdAvg')), borderColor: c.accent3, yAxisID: 'y', tension: .3, spanGaps: true, pointRadius: 1.5 },
+                    { type: 'line', label: 'Daily Calcine Consume (t)', data: mtdRows.map(r => val(r, 'calcineTotal')), borderColor: c.accent, yAxisID: 'y1', tension: .3, spanGaps: true, pointRadius: 1.5 },
+                    { type: 'line', label: 'GHE Target', data: mtdRows.map(() => gheTarget), borderColor: '#d9534f', borderDash: [5, 4], yAxisID: 'y1', pointRadius: 0 }
+                ]
+            },
+            options: excDualAxisOpts(c)
+        });
+    }
 
     function processData() {
         let startVal = document.getElementById('startDate').value;
@@ -443,6 +1164,9 @@
         chart3.data.datasets[1].data = finalData.map(i => { const v = i[m3b2]; return (v === null || v === undefined || isNaN(v)) ? null : v; });
         chart3.data.datasets[1].label = m3b2;
         chart3.update();
+
+        populateExcelDateSelect();
+        if (document.getElementById('viewExcel') && document.getElementById('viewExcel').style.display !== 'none') renderExcelDashboard();
     }
 
     // ==== Mesin tema warna (dropdown) ====
@@ -499,7 +1223,8 @@
         { id:"magma", label:"Magma Mist", accent:"#F06F0E", line:"#077771" },
         { id:"cosmicviolet", label:"Cosmic Violet & Solar Blaze", accent:"#400086", line:"#FF6E00" },
         { id:"sunbound", label:"Sunbound Majesty", accent:"#69326E", line:"#EED455" },
-        { id:"darkred", label:"Cream & Dark Red", accent:"#941704", line:"#ADC6E4" }
+        { id:"darkred", label:"Cream & Dark Red", accent:"#941704", line:"#ADC6E4" },
+        { id:"ceria", label:"Ceria Metalindo Prima", accent:"#ED1C24", line:"#FFC20E" }
     ];
 
     function computeThemeVars(theme, mode){
@@ -556,6 +1281,7 @@
     document.getElementById("themeSelect").addEventListener("change", function(e){
         applyTheme(e.target.value, chartMode);
         applyChartTheme();
+        if (document.getElementById('viewExcel').style.display !== 'none') renderExcelDashboard();
     });
 
     // ==== Tema (dark/light) untuk grafik Chart.js ====
@@ -632,6 +1358,7 @@
         applyTheme(currentTheme, chartMode);
         applyModeUI();
         applyChartTheme();
+        if (document.getElementById('viewExcel').style.display !== 'none') renderExcelDashboard();
     });
 
     $(document).ready(function() {
