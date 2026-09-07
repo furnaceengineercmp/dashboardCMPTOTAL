@@ -171,8 +171,9 @@
         .excel-pack-row{ display:flex; align-items:center; gap:14px; background:var(--panel-2); border:1px solid var(--border); border-radius:10px; padding:10px 14px; flex:1; min-width:220px; }
         .excel-pack-row .pk-name{ font-size:.7rem; color:var(--text-dim); text-transform:uppercase; }
         .excel-pack-row .pk-val{ font-size:1.3rem; font-weight:800; color:var(--accent); }
-        .excel-export-bar{ display:flex; gap:8px; }
+        .excel-export-bar{ display:flex; gap:8px; flex-wrap:wrap; }
         .excel-export-bar button{ font-size:.78rem; }
+        .excel-export-bar button.pin-active{ background:var(--accent) !important; color:#04141B !important; border-color:var(--accent) !important; }
 
         @media print{
             .view-toggle, .topbar, #viewAnalytics, .excel-export-bar, #excelDateSelect, .excel-note,
@@ -388,11 +389,14 @@
         <input type="date" id="excelDateSelect" class="form-control form-control-sm" onchange="renderExcelDashboard()" style="min-width:170px;">
       </div>
       <div class="excel-export-bar">
+        <button class="btn btn-sm btn-outline-info" id="btnPinMode" onclick="togglePinMode()">📌 Mode Pin Data</button>
+        <button class="btn btn-sm btn-outline-info" id="btnShowAllData" onclick="toggleShowAllData()">🔍 Tampilkan Semua Data</button>
         <button class="btn btn-sm btn-outline-secondary" id="btnExportPdf" onclick="requireExportPassword('pdf')">🖨️ Export PDF</button>
         <button class="btn btn-sm btn-outline-secondary" id="btnExportPpt" onclick="requireExportPassword('ppt')">📊 Export PPT</button>
       </div>
     </div>
   </div>
+  <div class="text-secondary small mb-2" id="pinModeHint" style="display:none;">📌 Mode Pin aktif — klik satu titik data di grafik manapun untuk mengunci callout-nya (klik lagi untuk lepas).</div>
   <div class="text-secondary small mb-2" id="syncStatusProduksi">Belum terhubung ke Google Sheet.</div>
 
   <div class="row">
@@ -1562,6 +1566,147 @@
         renderExcelCharts(mtdRows, row, { northSkim, southSkim, northTap, southTap });
     }
 
+    // ============================================================================
+    // ==== Fitur: Pin Data Grafik & Tampilkan Semua Data (callout permanen) ====
+    // "Mode Pin Data": klik 1 titik pada grafik apa pun -> kotak info menempel
+    // permanen di titik itu (klik lagi untuk lepas), tidak hilang saat kursor digeser.
+    // "Tampilkan Semua Data": semua titik di semua grafik langsung tampil callout-nya.
+    // ============================================================================
+    let pinModeActive = false;
+    let showAllDataActive = false;
+    const pinnedChartIndices = {}; // { chartKey: Set<number> }
+
+    function getPinnedSet(key){
+        if (!pinnedChartIndices[key]) pinnedChartIndices[key] = new Set();
+        return pinnedChartIndices[key];
+    }
+
+    function formatPinValue(v){
+        if (v === null || v === undefined) return null;
+        if (typeof v === 'number') { if (isNaN(v)) return null; return Number.isInteger(v) ? String(v) : v.toFixed(2); }
+        return String(v);
+    }
+
+    // Plugin Chart.js: menggambar kotak callout permanen di titik-titik yang di-pin
+    // (atau di SEMUA titik kalau mode "Tampilkan Semua Data" aktif).
+    const pinnedCalloutPlugin = {
+        id: 'pinnedCalloutPlugin',
+        afterDraw: function(chart){
+            const key = chart.config && chart.config._pinKey;
+            if (!key) return;
+            const labels = chart.data.labels || [];
+            let indices;
+            if (showAllDataActive) indices = labels.map(function(_, i){ return i; });
+            else indices = Array.from(getPinnedSet(key));
+            if (!indices.length) return;
+
+            const ctx = chart.ctx;
+            const isLight = document.body.getAttribute('data-mode') === 'light';
+            const bg = isLight ? 'rgba(255,255,255,0.97)' : 'rgba(18,24,30,0.97)';
+            const textCol = isLight ? '#1a1a1a' : '#f0f0f0';
+            const borderCol = (chartColors()).accent || '#00d4ff';
+            const area = chart.chartArea;
+            if (!area) return;
+
+            indices.forEach(function(idx){
+                const lines = [];
+                let px = null, py = null;
+                chart.data.datasets.forEach(function(ds, dsIdx){
+                    const meta = chart.getDatasetMeta(dsIdx);
+                    if (!meta || meta.hidden) return;
+                    const raw = ds.data ? ds.data[idx] : undefined;
+                    const val = formatPinValue(raw);
+                    if (val !== null) {
+                        lines.push({ label: ds.label || ('Data ' + (dsIdx + 1)), value: val, color: ds.borderColor || ds.backgroundColor || textCol });
+                    }
+                    if (px === null && meta.data && meta.data[idx] && typeof meta.data[idx].x === 'number') {
+                        px = meta.data[idx].x; py = meta.data[idx].y;
+                    }
+                });
+                if (px === null || !lines.length) return;
+
+                ctx.save();
+                ctx.font = 'bold 10px Segoe UI, sans-serif';
+                const titleText = String(labels[idx] !== undefined ? labels[idx] : idx);
+                const padding = 6, lineHeight = 13;
+                let boxW = ctx.measureText(titleText).width;
+                ctx.font = '10px Segoe UI, sans-serif';
+                lines.forEach(function(l){
+                    const w = ctx.measureText(l.label + ': ' + l.value).width + 16;
+                    if (w > boxW) boxW = w;
+                });
+                boxW += padding * 2;
+                const boxH = padding * 2 + lineHeight * (lines.length + 1);
+
+                let boxX = px + 8;
+                let boxY = py - boxH - 8;
+                if (boxX + boxW > area.right) boxX = px - boxW - 8;
+                if (boxX < area.left) boxX = area.left + 2;
+                if (boxY < area.top) boxY = py + 8;
+                if (boxY + boxH > area.bottom) boxY = area.bottom - boxH - 2;
+
+                ctx.fillStyle = bg;
+                ctx.strokeStyle = borderCol;
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                if (ctx.roundRect) ctx.roundRect(boxX, boxY, boxW, boxH, 6); else ctx.rect(boxX, boxY, boxW, boxH);
+                ctx.fill(); ctx.stroke();
+
+                ctx.fillStyle = textCol;
+                ctx.font = 'bold 10px Segoe UI, sans-serif';
+                ctx.fillText(titleText, boxX + padding, boxY + padding + 9);
+                ctx.font = '10px Segoe UI, sans-serif';
+                lines.forEach(function(l, i){
+                    const ly = boxY + padding + lineHeight * (i + 2);
+                    ctx.fillStyle = l.color;
+                    ctx.fillText('●', boxX + padding, ly);
+                    ctx.fillStyle = textCol;
+                    ctx.fillText(' ' + l.label + ': ' + l.value, boxX + padding + 9, ly);
+                });
+
+                ctx.fillStyle = borderCol;
+                ctx.beginPath();
+                ctx.arc(px, py, 3, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            });
+        }
+    };
+    Chart.register(pinnedCalloutPlugin);
+
+    // Dipanggil setelah tiap chart Dashboard Produksi dibuat, supaya klik titik data
+    // di grafik itu bisa di-pin (hanya aktif kalau "Mode Pin Data" sedang ON).
+    function attachPinClickHandler(chart, key){
+        if (!chart) return;
+        chart.config._pinKey = key;
+        chart.canvas.onclick = function(evt){
+            if (!pinModeActive) return;
+            const points = chart.getElementsAtEventForMode(evt, 'index', { intersect: false }, true);
+            if (!points.length) return;
+            const idx = points[0].index;
+            const set = getPinnedSet(key);
+            if (set.has(idx)) set.delete(idx); else set.add(idx);
+            chart.update('none');
+        };
+    }
+
+    function refreshAllExcelChartsDraw(){
+        [excChartPower, excChartMaterial, excChartTemp, excChartDiesel, excChartSkimming, excChartTapping,
+         excChartFeni, excChartNi, excChartPowerCalcineGhe].forEach(function(ch){ if (ch) ch.update('none'); });
+    }
+
+    function togglePinMode(){
+        pinModeActive = !pinModeActive;
+        document.getElementById('btnPinMode').classList.toggle('pin-active', pinModeActive);
+        document.getElementById('pinModeHint').style.display = pinModeActive ? '' : 'none';
+    }
+
+    function toggleShowAllData(){
+        showAllDataActive = !showAllDataActive;
+        document.getElementById('btnShowAllData').classList.toggle('pin-active', showAllDataActive);
+        refreshAllExcelChartsDraw();
+    }
+
     // ==== Grafik-grafik panel Dashboard Produksi (gaya Excel) ====
     let excChartPower, excChartMaterial, excChartTemp, excChartDiesel, excChartSkimming, excChartTapping,
         excChartFeni, excChartNi, excChartPowerCalcineGhe, excDonutSkimming, excDonutTapping;
@@ -1640,6 +1785,7 @@
             data: { labels, datasets: [{ label: 'Power (MW)', data: mtdRows.map(r => val(r, 'power')), borderColor: c.accent, backgroundColor: hexToRgba(c.accent, 0.15), fill: true, tension: .3, spanGaps: true, pointRadius: 2 }] },
             options: excChartOpts(c)
         });
+        attachPinClickHandler(excChartPower, 'excChartPower');
 
         destroyIfExists(excChartMaterial);
         excChartMaterial = new Chart(document.getElementById('excChartMaterial'), {
@@ -1650,6 +1796,7 @@
             },
             options: excChartOpts(c)
         });
+        attachPinClickHandler(excChartMaterial, 'excChartMaterial');
 
         destroyIfExists(excChartTemp);
         excChartTemp = new Chart(document.getElementById('excChartTemp'), {
@@ -1663,6 +1810,7 @@
             },
             options: excChartOpts(c, true)
         });
+        attachPinClickHandler(excChartTemp, 'excChartTemp');
 
         destroyIfExists(excChartDiesel);
         excChartDiesel = new Chart(document.getElementById('excChartDiesel'), {
@@ -1675,6 +1823,7 @@
             },
             options: excDualAxisOpts(c)
         });
+        attachPinClickHandler(excChartDiesel, 'excChartDiesel');
 
         destroyIfExists(excChartSkimming);
         excChartSkimming = new Chart(document.getElementById('excChartSkimming'), {
@@ -1682,6 +1831,7 @@
             data: { labels, datasets: [{ label: 'Skimming (x)', data: mtdRows.map(r => val(r, 'totalSkim')), backgroundColor: hexToRgba(c.accent, 0.6) }] },
             options: excChartOpts(c)
         });
+        attachPinClickHandler(excChartSkimming, 'excChartSkimming');
 
         destroyIfExists(excChartTapping);
         const tappingMetricLabels = {
@@ -1701,6 +1851,7 @@
             },
             options: excDualAxisOpts(c)
         });
+        attachPinClickHandler(excChartTapping, 'excChartTapping');
 
         // ---- Kombo chart produksi: bar kumulatif (kanan) + line harian & rata-rata (kiri) + garis target harian ----
         // dailyKey/cumKey/avgKey mengambil nilai LANGSUNG dari kolom sheet per baris (kolom-kolom itu sudah
@@ -1711,7 +1862,7 @@
             const avgData = mtdRows.map(r => getVal(r, avgKey));
             const targetLine = mtdRows.map(() => dailyTarget);
             destroyIfExists(existingRef);
-            return new Chart(document.getElementById(canvasId), {
+            const chart = new Chart(document.getElementById(canvasId), {
                 data: {
                     labels, datasets: [
                         { type: 'bar', label: 'Total Production (kumulatif)', data: cumData, backgroundColor: hexToRgba(c.accent, 0.35), yAxisID: 'y1' },
@@ -1722,6 +1873,8 @@
                 },
                 options: excDualAxisOpts(c, true)
             });
+            attachPinClickHandler(chart, canvasId);
+            return chart;
         }
         const feniDailyTarget = parseFloat(document.getElementById('excFeniDailyTargetInput').value) || 0;
         const niDailyTarget = parseFloat(document.getElementById('excNiDailyTargetInput').value) || 0;
@@ -1743,6 +1896,7 @@
             },
             options: excDualAxisOpts(c, true)
         });
+        attachPinClickHandler(excChartPowerCalcineGhe, 'excChartPowerCalcineGhe');
     }
 
     function processData() {
