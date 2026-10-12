@@ -13,6 +13,7 @@
     <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
     <style>
         :root{ --font-body: 'Segoe UI', sans-serif; }
 
@@ -615,7 +616,34 @@
       <div class="excel-panel">
         <div class="excel-panel-title">🪣 Update Ladle Availability</div>
         <textarea id="ladleList" rows="5" placeholder="Contoh:&#10;#2  On Progress Repair&#10;#5  Standby&#10;#6  Ready For Heating Up&#10;#7  Tapping progress (1x used)&#10;#8  Cooling Down"></textarea>
-        <div class="excel-note">Diisi manual — belum ada kolom status ladle di sheet Data.</div>
+        <div class="excel-note">Otomatis dari sheet (kolom DH–DM, header = nomor ladle) sesuai tanggal terpilih; tetap bisa diedit manual.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="col-lg-12">
+      <div class="excel-panel no-export" id="thermalPanel">
+        <div class="excel-panel-title">🌡️ Thermal Corner — Import Laporan Foto Thermal</div>
+        <div class="row g-2 align-items-end mb-2">
+          <div class="col-auto">
+            <label class="form-label small text-secondary mb-1 d-block">File laporan thermal (.docx)</label>
+            <input type="file" id="thermalFileInput" accept=".docx" multiple class="form-control form-control-sm" onchange="thermalHandleFiles(this)">
+          </div>
+          <div class="col-auto">
+            <label class="form-label small text-secondary mb-1 d-block">Format tanggal di dokumen</label>
+            <select id="thermalDateOrder" class="form-select form-select-sm">
+              <option value="mdy">Bulan/Hari/Tahun (US)</option>
+              <option value="dmy">Hari/Bulan/Tahun</option>
+            </select>
+          </div>
+          <div class="col-auto"><button class="btn btn-sm btn-info" onclick="thermalSaveDraft()">💾 Simpan ke GSheet</button></div>
+        </div>
+        <div class="small text-secondary mb-2" id="thermalStatus">Pilih file laporan thermal (.docx) — foto, tanggal, dan kode anotasi dibaca otomatis.</div>
+        <div id="thermalDraftBox"></div>
+        <div class="lbl mt-3 mb-1">Foto tersimpan di GSheet (10 tanggal terakhir)</div>
+        <div class="small" id="thermalSavedBox">-</div>
+        <div class="excel-note">Kode: TU = Timur Utara (North East), BU = Barat Utara (North West), BS = Barat Selatan (South West), TS = Timur Selatan (South East). Angka 1 = Upper Cooler, 2 = Lower Cooler. Export PPT/PDF memakai 3 tanggal terakhir ≤ tanggal yang dipilih.</div>
       </div>
     </div>
   </div>
@@ -1091,6 +1119,8 @@
             const sheetSel = document.getElementById('sheetYearSelect');
             const sheetParam = sheetSel ? sheetSel.value : 'Data 2026';
             rawData = await fetchSheetData(sheetParam);
+            await loadLadleData(sheetParam);
+            thermalRefreshSaved();
             populateExcelDateSelect();
             if (document.getElementById('viewExcel').style.display !== 'none') renderExcelDashboard();
             const now = new Date();
@@ -1205,8 +1235,8 @@
     function pdfAddChrome(pdf, pageW, pageH){
         const red = hexToRgb(BRAND_RED), yellow = hexToRgb(BRAND_YELLOW), black = hexToRgb(BRAND_BLACK);
         pdf.setFillColor(red.r, red.g, red.b);
-        pdf.rect(0, 0, 18, 14, 'F');
-        pdf.addImage(CERIA_LOGO_B64, 'PNG', pageW - 58, 6, 50, 15.4);
+        pdf.rect(0, 0, 12, 9, 'F');
+        pdf.addImage(CERIA_LOGO_B64, 'PNG', pageW - 40, 1.5, 36, 11.1);
         const stripeY = pageH - 4, stripeH = 3, segW = pageW / 3;
         pdf.setFillColor(red.r, red.g, red.b); pdf.rect(0, stripeY, segW, stripeH, 'F');
         pdf.setFillColor(yellow.r, yellow.g, yellow.b); pdf.rect(segW, stripeY, segW, stripeH, 'F');
@@ -1298,7 +1328,7 @@
         const originalLabel = btn ? btn.innerText : null;
         if (btn) { btn.disabled = true; btn.innerText = '⏳ Menyiapkan PDF...'; }
         try {
-            const panels = Array.from(document.querySelectorAll('#viewExcel .excel-panel, #viewExcel .excel-banner'));
+            const panels = Array.from(document.querySelectorAll('#viewExcel .excel-panel:not(.no-export)'));
             const { jsPDF } = window.jspdf;
             const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
             const pageW = pdf.internal.pageSize.getWidth();
@@ -1307,7 +1337,7 @@
 
             pdfAddCoverPage(pdf, pageW, pageH, dateLabel);
 
-            const margin = 8, gap = 4, topSafe = 20, bottomSafe = 8;
+            const margin = 4, gap = 3, topSafe = 12, bottomSafe = 6;
             const usableW = pageW - margin * 2;
             const maxH = pageH - topSafe - bottomSafe;
             let cursorY = topSafe;
@@ -1330,6 +1360,9 @@
                 pdf.addImage(imgData, 'PNG', x, cursorY, w, h);
                 cursorY += h + gap;
             }
+
+            const thermalSlides = await thermalPrepareSlides(dateLabel);
+            thermalSlides.forEach(s => thermalRenderPdf(pdf, thermalBuildItems(s, pageW, pageH, 0.877), pageW, pageH));
 
             pdfAddThankYouPage(pdf, pageW, pageH);
 
@@ -1395,8 +1428,8 @@
     // blok merah pojok kiri-atas, logo pojok kanan-atas, garis 3 warna (merah-kuning-hitam) di bawah.
     function addSlideChrome(slide){
         slide.background = { color: 'FFFFFF' };
-        slide.addShape('rect', { x: 0, y: 0, w: 0.75, h: 0.55, fill: { color: BRAND_RED }, line: { type: 'none' } });
-        slide.addImage({ data: CERIA_LOGO_B64, x: 10.55, y: 0.22, w: 2.1, h: 0.65 });
+        slide.addShape('rect', { x: 0, y: 0, w: 0.6, h: 0.42, fill: { color: BRAND_RED }, line: { type: 'none' } });
+        slide.addImage({ data: CERIA_LOGO_B64, x: 11.3, y: 0.06, w: 1.85, h: 0.57 });
         const stripeY = 7.38, stripeH = 0.12, segW = 13.33 / 3;
         slide.addShape('rect', { x: 0, y: stripeY, w: segW, h: stripeH, fill: { color: BRAND_RED }, line: { type: 'none' } });
         slide.addShape('rect', { x: segW, y: stripeY, w: segW, h: stripeH, fill: { color: BRAND_YELLOW }, line: { type: 'none' } });
@@ -1414,7 +1447,7 @@
         const originalLabel = btn.innerText;
         btn.disabled = true; btn.innerText = '⏳ Menyiapkan PPT...';
         try {
-            const panels = Array.from(document.querySelectorAll('#viewExcel .excel-panel, #viewExcel .excel-banner'));
+            const panels = Array.from(document.querySelectorAll('#viewExcel .excel-panel:not(.no-export)'));
             const pptx = new PptxGenJS();
             pptx.defineLayout({ name: 'WIDE', width: 13.33, height: 7.5 });
             pptx.layout = 'WIDE';
@@ -1426,11 +1459,13 @@
                 const slide = pptx.addSlide();
                 addSlideChrome(slide);
                 const ratio = canvas.height / canvas.width;
-                const maxW = 12.1, maxH = 6.3;
+                const maxW = 12.93, maxH = 6.65;
                 let w = maxW, h = w * ratio;
                 if (h > maxH) { h = maxH; w = h / ratio; }
-                slide.addImage({ data: imgData, x: (13.33 - w) / 2, y: 0.75 + (6.4 - h) / 2, w, h });
+                slide.addImage({ data: imgData, x: (13.33 - w) / 2, y: 0.65 + (6.65 - h) / 2, w, h });
             }
+            const thermalSlides = await thermalPrepareSlides(dateLabel);
+            thermalSlides.forEach(s => thermalRenderPptx(pptx, thermalBuildItems(s, 13.33, 7.5, 1)));
             addThankYouSlide(pptx);
             await pptx.writeFile({ fileName: `Furnace_Daily_Report_${dateLabel}.pptx` });
         } catch (err) {
@@ -1438,6 +1473,354 @@
         } finally {
             btn.disabled = false; btn.innerText = originalLabel;
         }
+    }
+
+    // ==================== LADLE AVAILABILITY (otomatis dari sheet, kolom DH-DM) ====================
+    // Semua GET ke backend wajib membawa username+token sesi (sama seperti fetchSheetData)
+    function authQs(){ return currentUser ? '&username=' + encodeURIComponent(currentUser.username) + '&token=' + encodeURIComponent(currentUser.token) : ''; }
+    let ladleByDate = {};
+    let ladleFilledKey = '';
+    async function loadLadleData(sheetName){
+        try {
+            const res = await fetch(SHEET_WEBAPP_URL + '?action=ladle&sheet=' + encodeURIComponent(sheetName) + '&t=' + Date.now() + authQs());
+            const j = await res.json();
+            if (j && Array.isArray(j.rows)) {
+                ladleByDate = {};
+                j.rows.forEach(r => { ladleByDate[normalizeDateKey(r.date)] = r.ladles || []; });
+                ladleFilledKey = '';
+            }
+        } catch (e) { /* backend belum diperbarui -> tetap isian manual */ }
+    }
+    function fillLadleFromSheet(dateKey){
+        const ta = document.getElementById('ladleList');
+        const sheetSel = document.getElementById('sheetYearSelect');
+        const key = (sheetSel ? sheetSel.value : '') + '|' + dateKey;
+        if (!ta || key === ladleFilledKey) return;   // jangan timpa ketikan manual kalau tanggalnya sama
+        const ladles = ladleByDate[dateKey];
+        if (!ladles) return;
+        ta.value = ladles.filter(l => l.status).map(l => '#' + l.no + '  ' + l.status).join('\n');
+        ladleFilledKey = key;
+    }
+
+    // ==================== THERMAL CORNER: import .docx -> GSheet/Drive -> slide PPT/PDF ====================
+    const THERMAL_CORNERS = [
+        { key: 'TU', label: 'North East' },
+        { key: 'BU', label: 'North West' },
+        { key: 'BS', label: 'South West' },
+        { key: 'TS', label: 'South East' }
+    ];
+    const THERMAL_LEVELS = { 1: 'UPPER COOLER', 2: 'LOWER COOLER' };
+    const THERMAL_MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    let thermalDraft = [];
+
+    function thermalEsc(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+    function thermalNormCode(s){
+        const m = String(s || '').toUpperCase().replace(/[\s_-]/g, '').match(/^(TU|BU|BS|TS)([12])$/);
+        return m ? m[1] + m[2] : '';
+    }
+    function thermalXmlText(el){ return Array.from(el.getElementsByTagName('w:t')).map(t => t.textContent).join(''); }
+    function thermalElementLines(el){
+        if (el.nodeName === 'w:tbl') {
+            return Array.from(el.getElementsByTagName('w:tr')).map(tr =>
+                Array.from(tr.getElementsByTagName('w:tc')).map(tc => thermalXmlText(tc).trim()).join(' | '));
+        }
+        const t = thermalXmlText(el).trim();
+        return t ? [t] : [];
+    }
+    function thermalParseRels(xml){
+        const d = new DOMParser().parseFromString(xml, 'application/xml');
+        const map = {};
+        Array.from(d.getElementsByTagName('Relationship')).forEach(r => {
+            let t = r.getAttribute('Target') || '';
+            if (/^https?:/i.test(t)) return;
+            t = t.replace(/^\//, '');
+            if (t.indexOf('word/') !== 0) t = 'word/' + t;
+            map[r.getAttribute('Id')] = t;
+        });
+        return map;
+    }
+    function thermalElementImages(el, rels){
+        const out = [];
+        Array.from(el.getElementsByTagName('w:drawing')).forEach(d => {
+            const blip = d.getElementsByTagName('a:blip')[0];
+            if (!blip) return;
+            const path = rels[blip.getAttribute('r:embed') || blip.getAttribute('r:link')];
+            if (!path) return;
+            const ext = d.getElementsByTagName('wp:extent')[0];
+            const anchor = d.getElementsByTagName('wp:anchor')[0];
+            let offX = null, offY = null;
+            if (anchor) {
+                const ph = anchor.getElementsByTagName('wp:positionH')[0], pv = anchor.getElementsByTagName('wp:positionV')[0];
+                const ox = ph && ph.getElementsByTagName('wp:posOffset')[0], oy = pv && pv.getElementsByTagName('wp:posOffset')[0];
+                offX = ox ? parseInt(ox.textContent, 10) : null;
+                offY = oy ? parseInt(oy.textContent, 10) : null;
+            }
+            out.push({ path, cx: ext ? parseInt(ext.getAttribute('cx'), 10) : 0, cy: ext ? parseInt(ext.getAttribute('cy'), 10) : 0, anchored: !!anchor, offX, offY });
+        });
+        if (!out.length) {
+            Array.from(el.getElementsByTagName('v:imagedata')).forEach(im => {
+                const path = rels[im.getAttribute('r:id')];
+                if (path) out.push({ path, cx: 0, cy: 0, anchored: false, offX: null, offY: null });
+            });
+        }
+        return out;
+    }
+    function thermalReadMeta(rec, dmyDefault){
+        const text = rec.lines.join('\n');
+        const pad = n => String(n).padStart(2, '0');
+        let m = text.match(/UserEnteredString[^A-Za-z0-9]*([A-Za-z]{2}\s*\d)/i) || text.match(/\b(TU|BU|BS|TS)\s*-?\s*([12])\b/i);
+        let code = '';
+        if (m) code = thermalNormCode(m[2] && !/\d/.test(m[1]) ? m[1] + m[2] : m[1]);
+        const fileName = (text.match(/\b(IR_[A-Za-z0-9_]+\.[A-Za-z0-9]+)/) || [])[1] || '';
+        const dm = text.match(/Image Time[^0-9]*(\d{1,2})\/(\d{1,2})\/(\d{4})/i) || text.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+        let date = '';
+        if (dm) {
+            const a = +dm[1], b = +dm[2], y = +dm[3];
+            let d, mo;
+            if (a > 12) { d = a; mo = b; } else if (b > 12) { mo = a; d = b; } else if (dmyDefault) { d = a; mo = b; } else { mo = a; d = b; }
+            date = y + '-' + pad(mo) + '-' + pad(d);
+        }
+        return { imgs: rec.imgs, fileName, code, date, rawDate: dm ? dm[1] + '/' + dm[2] + '/' + dm[3] : '' };
+    }
+    // Satu dokumen berisi banyak foto: tiap foto diikuti teks (nama file, tanggal, tabel "Main Image Annotations", dst.)
+    // sampai muncul foto berikutnya -> itu satu "record".
+    function thermalExtractRecords(docXml, rels, dmyDefault){
+        const doc = new DOMParser().parseFromString(docXml, 'application/xml');
+        const body = doc.getElementsByTagName('w:body')[0];
+        const records = [];
+        let cur = { imgs: [], lines: [] };
+        const flush = () => { if (cur.imgs.length) records.push(cur); cur = { imgs: [], lines: [] }; };
+        Array.from(body.children).forEach(el => {
+            const imgs = thermalElementImages(el, rels);
+            if (imgs.length) { if (cur.lines.length) flush(); cur.imgs.push(...imgs); }
+            cur.lines.push(...thermalElementLines(el));
+        });
+        flush();
+        return records.map(r => thermalReadMeta(r, dmyDefault));
+    }
+    function thermalLoadImage(blob){
+        return new Promise((res, rej) => {
+            const u = URL.createObjectURL(blob), im = new Image();
+            im.onload = () => res({ im, u });
+            im.onerror = () => { URL.revokeObjectURL(u); rej(new Error('format gambar tidak didukung')); };
+            im.src = u;
+        });
+    }
+    // Gabungkan foto thermal + skala suhu (kalau terpisah di dokumen) jadi satu gambar JPEG
+    async function thermalCompose(zip, imgs){
+        const loaded = [];
+        for (const it of imgs) {
+            const f = zip.file(it.path);
+            if (!f) continue;
+            try { const { im, u } = await thermalLoadImage(await f.async('blob')); loaded.push({ im, u, it }); } catch (e) {}
+        }
+        if (!loaded.length) throw new Error('gambar tidak bisa dibaca (kemungkinan format EMF/WMF)');
+        const area = l => l.im.naturalWidth * l.im.naturalHeight;
+        const maxA = Math.max(...loaded.map(area));
+        const use = loaded.filter(l => area(l) >= maxA * 0.01);
+        const allAnch = use.length > 1 && use.every(l => l.it.anchored && l.it.offX != null && l.it.offY != null);
+        let xAcc = 0;
+        const pos = use.map(l => {
+            const cx = l.it.cx || l.im.naturalWidth * 9525, cy = l.it.cy || l.im.naturalHeight * 9525;
+            const p = allAnch ? { x: l.it.offX, y: l.it.offY } : { x: xAcc, y: 0 };
+            xAcc += cx;
+            return { l, cx, cy, x: p.x, y: p.y };
+        });
+        const minX = Math.min(...pos.map(p => p.x)), minY = Math.min(...pos.map(p => p.y));
+        const k = Math.max(...pos.map(p => p.l.im.naturalWidth / p.cx));
+        const W = Math.ceil(Math.max(...pos.map(p => p.x - minX + p.cx)) * k);
+        const H = Math.ceil(Math.max(...pos.map(p => p.y - minY + p.cy)) * k);
+        const s = W > 1100 ? 1100 / W : 1;
+        const c = document.createElement('canvas');
+        c.width = Math.round(W * s); c.height = Math.round(H * s);
+        const g = c.getContext('2d');
+        g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height);
+        pos.forEach(p => g.drawImage(p.l.im, (p.x - minX) * k * s, (p.y - minY) * k * s, p.cx * k * s, p.cy * k * s));
+        loaded.forEach(l => URL.revokeObjectURL(l.u));
+        return c.toDataURL('image/jpeg', 0.88);
+    }
+    async function thermalHandleFiles(input){
+        const files = Array.from(input.files || []);
+        if (!files.length) return;
+        const st = document.getElementById('thermalStatus');
+        const dmy = document.getElementById('thermalDateOrder').value === 'dmy';
+        thermalDraft = [];
+        const warns = [];
+        for (const file of files) {
+            st.textContent = 'Membaca ' + file.name + '...';
+            try {
+                const buf = await file.arrayBuffer();
+                const u8 = new Uint8Array(buf);
+                if (!(u8[0] === 0x50 && u8[1] === 0x4B)) { warns.push(file.name + ': bukan .docx (format .doc lama tidak bisa dibaca). Buka di Word → File → Save As → "Word Document (*.docx)" lalu import lagi.'); continue; }
+                const zip = await JSZip.loadAsync(buf);
+                const docF = zip.file('word/document.xml'), relF = zip.file('word/_rels/document.xml.rels');
+                if (!docF || !relF) { warns.push(file.name + ': struktur dokumen tidak dikenali.'); continue; }
+                const recs = thermalExtractRecords(await docF.async('string'), thermalParseRels(await relF.async('string')), dmy);
+                if (!recs.length) warns.push(file.name + ': tidak ditemukan foto di dokumen.');
+                for (const r of recs) {
+                    try { r.dataUrl = await thermalCompose(zip, r.imgs); } catch (e) { r.error = e.message; }
+                    r.imgs = null;
+                    thermalDraft.push(r);
+                }
+            } catch (e) { warns.push(file.name + ': ' + e.message); }
+        }
+        input.value = '';
+        thermalRenderDraft();
+        st.innerHTML = (thermalDraft.length ? thermalDraft.length + ' foto terbaca — cek tanggal & kode, lalu klik "Simpan ke GSheet".' : 'Tidak ada foto yang terbaca.') +
+            (warns.length ? '<br><span class="text-warning">' + warns.map(thermalEsc).join('<br>') + '</span>' : '');
+    }
+    function thermalRenderDraft(){
+        const box = document.getElementById('thermalDraftBox');
+        if (!thermalDraft.length) { box.innerHTML = ''; return; }
+        const opts = ['<option value="">— pilih kode —</option>'].concat([1, 2].reduce((a, l) => a.concat(THERMAL_CORNERS.map(c =>
+            '<option value="' + c.key + l + '">' + c.key + l + ' — ' + c.label + ' (' + THERMAL_LEVELS[l] + ')</option>')), [])).join('');
+        let h = '<div class="table-responsive"><table class="table table-sm align-middle"><thead><tr><th></th><th>Foto</th><th>File asli</th><th>Tanggal</th><th>Kode</th></tr></thead><tbody>';
+        thermalDraft.forEach((r, i) => {
+            h += '<tr><td><input type="checkbox" class="thermal-chk" data-i="' + i + '" ' + (r.error ? 'disabled' : 'checked') + '></td>' +
+                '<td>' + (r.dataUrl ? '<img src="' + r.dataUrl + '" style="height:64px;border-radius:4px;">' : '<span class="text-danger small">' + thermalEsc(r.error) + '</span>') + '</td>' +
+                '<td class="small">' + thermalEsc(r.fileName || '-') + '<br><span class="text-secondary">' + thermalEsc(r.rawDate) + '</span></td>' +
+                '<td><input type="date" class="form-control form-control-sm thermal-date" data-i="' + i + '" value="' + thermalEsc(r.date) + '" style="width:150px"></td>' +
+                '<td><select class="form-select form-select-sm thermal-code" data-i="' + i + '" style="width:260px">' + opts + '</select></td></tr>';
+        });
+        box.innerHTML = h + '</tbody></table></div>';
+        box.querySelectorAll('.thermal-code').forEach(s => { s.value = thermalDraft[+s.dataset.i].code || ''; });
+    }
+    async function thermalSaveDraft(){
+        const st = document.getElementById('thermalStatus');
+        const box = document.getElementById('thermalDraftBox');
+        const jobs = [];
+        box.querySelectorAll('.thermal-chk').forEach(chk => {
+            if (!chk.checked) return;
+            const i = +chk.dataset.i, r = thermalDraft[i];
+            const date = box.querySelector('.thermal-date[data-i="' + i + '"]').value;
+            const code = box.querySelector('.thermal-code[data-i="' + i + '"]').value;
+            if (r.dataUrl && date && code) jobs.push({ r, date, code });
+        });
+        if (!jobs.length) { alert('Belum ada foto yang siap disimpan — pastikan tanggal & kode sudah terisi dan kotak centang aktif.'); return; }
+        const seen = {};
+        jobs.forEach(j => { seen[j.date + j.code] = (seen[j.date + j.code] || 0) + 1; });
+        const dup = Object.keys(seen).filter(k => seen[k] > 1);
+        if (dup.length && !confirm('Ada tanggal+kode yang dobel (' + dup.join(', ') + '). Foto yang terakhir akan menimpa yang sebelumnya. Lanjutkan?')) return;
+        let ok = 0;
+        for (const j of jobs) {
+            st.textContent = 'Menyimpan ' + (ok + 1) + ' / ' + jobs.length + ' (' + j.date + ' ' + j.code + ')...';
+            try {
+                const r = await authPost({ action: 'thermalUpload', username: currentUser.username, token: currentUser.token, date: j.date, code: j.code, fileName: j.r.fileName || '', mime: 'image/jpeg', data: j.r.dataUrl.split(',')[1] });
+                if (!r || !r.ok) throw new Error((r && r.message) || 'backend menolak (pastikan Code.gs sudah diperbarui)');
+                ok++;
+            } catch (e) { st.innerHTML = '<span class="text-danger">Gagal menyimpan ' + thermalEsc(j.date + ' ' + j.code) + ': ' + thermalEsc(e.message) + ' (tersimpan ' + ok + ' dari ' + jobs.length + ')</span>'; return; }
+        }
+        thermalDraft = [];
+        thermalRenderDraft();
+        st.textContent = ok + ' foto tersimpan ke GSheet/Drive.';
+        thermalRefreshSaved();
+    }
+    async function thermalFetchList(){
+        const res = await fetch(SHEET_WEBAPP_URL + '?action=thermalList&t=' + Date.now() + authQs());
+        const j = await res.json();
+        if (!j || !j.ok) throw new Error((j && j.message) || 'thermalList gagal');
+        return j.rows || [];
+    }
+    async function thermalRefreshSaved(){
+        const el = document.getElementById('thermalSavedBox');
+        if (!el) return;
+        try {
+            const rows = await thermalFetchList();
+            if (!rows.length) { el.textContent = 'Belum ada foto tersimpan.'; return; }
+            const by = {};
+            rows.forEach(r => { (by[r.date] = by[r.date] || []).push(r.code); });
+            el.innerHTML = Object.keys(by).sort().reverse().slice(0, 10).map(d => '<div><b>' + thermalEsc(d) + '</b> — ' + by[d].sort().map(thermalEsc).join(', ') + '</div>').join('');
+        } catch (e) { el.textContent = 'Daftar belum bisa dimuat (pastikan Code.gs sudah diperbarui & Drive diizinkan).'; }
+    }
+    async function thermalFetchImageData(id){
+        const r = await fetch(SHEET_WEBAPP_URL + '?action=thermalImage&id=' + encodeURIComponent(id) + authQs());
+        const j = await r.json();
+        if (!j || !j.ok) throw new Error('thermalImage gagal');
+        return 'data:' + (j.mime || 'image/jpeg') + ';base64,' + j.data;
+    }
+    function thermalImgSize(dataUrl){
+        return new Promise(res => { const im = new Image(); im.onload = () => res({ w: im.naturalWidth, h: im.naturalHeight }); im.onerror = () => res(null); im.src = dataUrl; });
+    }
+    // Ambil 3 tanggal terakhir (<= tanggal export) per level (1 = Upper, 2 = Lower) beserta gambarnya
+    async function thermalPrepareSlides(selDate){
+        let rows;
+        try { rows = await thermalFetchList(); } catch (e) { return []; }
+        const slides = [];
+        for (const level of [1, 2]) {
+            const rs = rows.filter(r => /^(TU|BU|BS|TS)[12]$/.test(r.code) && +r.code.slice(2) === level && r.date <= selDate);
+            const dates = Array.from(new Set(rs.map(r => r.date))).sort().reverse().slice(0, 3);
+            if (!dates.length) continue;
+            const need = rs.filter(r => dates.indexOf(r.date) >= 0);
+            const cells = {};
+            let idx = 0;
+            const worker = async () => {
+                while (idx < need.length) {
+                    const r = need[idx++];
+                    try {
+                        const data = await thermalFetchImageData(r.fileId);
+                        const sz = await thermalImgSize(data);
+                        if (sz) { const ck = r.code.slice(0, 2); (cells[ck] = cells[ck] || {})[r.date] = { data, w: sz.w, h: sz.h }; }
+                    } catch (e) {}
+                }
+            };
+            await Promise.all([worker(), worker(), worker(), worker()]);
+            slides.push({ level, dates, cells });
+        }
+        return slides;
+    }
+    function thermalFmtDate(d){ const p = d.split('-'); return p[2] + ' ' + THERMAL_MONTHS[+p[1] - 1] + ' -' + p[0]; }
+    // Susunan slide (mengikuti contoh): judul merah, 4 kolom sudut, 3 baris tanggal.
+    // Semua posisi dalam satuan W x H (inci untuk PPT, mm untuk PDF); fs = faktor skala ukuran huruf.
+    function thermalBuildItems(s, W, H, fs){
+        const it = [];
+        const rect = (x, y, w, h, color) => it.push({ t: 'rect', x: x * W, y: y * H, w: w * W, h: h * H, color });
+        rect(0, 0.03, 0.063, 0.07, BRAND_RED);
+        rect(0.07, 0.03, 0.72, 0.07, 'C00000');
+        it.push({ t: 'text', text: 'TEMPERATURE PROFILE-CORNER (' + THERMAL_LEVELS[s.level] + ')', x: 0.085 * W, y: 0.03 * H, w: 0.70 * W, h: 0.07 * H, pt: 24 * fs, bold: true, color: 'FFFFFF' });
+        const lw = 0.17 * W;
+        it.push({ t: 'image', data: CERIA_LOGO_B64, fmt: 'PNG', x: 0.805 * W, y: 0.012 * H, w: lw, h: lw / 3.23 });
+        const colX0 = 0.035, colW = 0.2375;
+        THERMAL_CORNERS.forEach((c, ci) => {
+            const cx = (colX0 + ci * colW) * W;
+            it.push({ t: 'text', text: '(' + c.label + ')', x: cx, y: 0.118 * H, w: colW * W * 0.9, h: 0.04 * H, pt: 18 * fs, bold: true, color: '000000', highlight: 'FFFF00' });
+            s.dates.forEach((d, ri) => {
+                const cell = s.cells[c.key] && s.cells[c.key][d];
+                if (!cell) return;
+                const top = (0.165 + ri * 0.268) * H, bw = (colW - 0.012) * W, bh = 0.215 * H;
+                const sc = Math.min(bw / cell.w, bh / cell.h), w = cell.w * sc, h = cell.h * sc;
+                it.push({ t: 'image', data: cell.data, fmt: 'JPEG', x: cx, y: top, w, h });
+                it.push({ t: 'text', text: thermalFmtDate(d), x: cx, y: top + h + 0.004 * H, w: bw, h: 0.035 * H, pt: 14 * fs, bold: true, color: '000000', highlight: 'FFFF00' });
+            });
+        });
+        [BRAND_RED, BRAND_YELLOW, BRAND_BLACK].forEach((col, i) => rect(i / 3, 0.984, 1 / 3, 0.016, col));
+        return it;
+    }
+    function thermalRenderPptx(pptx, items){
+        const slide = pptx.addSlide();
+        slide.background = { color: 'FFFFFF' };
+        items.forEach(i => {
+            if (i.t === 'rect') slide.addShape('rect', { x: i.x, y: i.y, w: i.w, h: i.h, fill: { color: i.color }, line: { type: 'none' } });
+            else if (i.t === 'image') slide.addImage({ data: i.data, x: i.x, y: i.y, w: i.w, h: i.h });
+            else slide.addText(i.text, Object.assign({ x: i.x, y: i.y, w: i.w, h: i.h, fontFace: 'Arial', fontSize: i.pt, bold: !!i.bold, color: i.color, valign: 'middle', margin: 0 }, i.highlight ? { highlight: i.highlight } : {}));
+        });
+    }
+    function thermalRenderPdf(pdf, items, pageW, pageH){
+        pdf.addPage();
+        pdf.setFillColor(255, 255, 255); pdf.rect(0, 0, pageW, pageH, 'F');
+        items.forEach(i => {
+            if (i.t === 'rect') { const c = hexToRgb(i.color); pdf.setFillColor(c.r, c.g, c.b); pdf.rect(i.x, i.y, i.w, i.h, 'F'); }
+            else if (i.t === 'image') { pdf.addImage(i.data, i.fmt || 'JPEG', i.x, i.y, i.w, i.h); }
+            else {
+                pdf.setFont('helvetica', i.bold ? 'bold' : 'normal'); pdf.setFontSize(i.pt);
+                const midY = i.y + i.h / 2;
+                if (i.highlight) {
+                    const tw = pdf.getTextWidth(i.text), fh = i.pt * 0.3528 * 1.25, hc = hexToRgb(i.highlight);
+                    pdf.setFillColor(hc.r, hc.g, hc.b); pdf.rect(i.x - 0.6, midY - fh / 2, tw + 1.2, fh, 'F');
+                }
+                const tc = hexToRgb(i.color); pdf.setTextColor(tc.r, tc.g, tc.b);
+                pdf.text(i.text, i.x, midY, { baseline: 'middle' });
+            }
+        });
     }
 
     // ==== Tab: Analitik Data <-> Dashboard Produksi <-> Admin ====
@@ -1479,6 +1862,7 @@
         }
         if (!row) return;
         document.getElementById('excelDateLabel').innerText = row.Date;
+        fillLadleFromSheet(row.Date);
 
         // ---- POWER ----
         document.getElementById('excPower').innerText = fmtNum(getVal(row, 'power'));
