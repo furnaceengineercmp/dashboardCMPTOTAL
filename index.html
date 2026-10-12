@@ -1344,7 +1344,7 @@
             let pageHasChrome = false;
             const bg = getComputedStyle(document.body).getPropertyValue('--bg') || '#121212';
             for (const panel of panels) {
-                const canvas = await html2canvas(panel, { backgroundColor: bg, scale: 2 });
+                const canvas = await excelCapture(panel, bg);
                 const imgData = canvas.toDataURL('image/png');
                 const ratio = canvas.height / canvas.width;
                 let w = usableW, h = w * ratio;
@@ -1454,7 +1454,7 @@
             const dateLabel = document.getElementById('excelDateLabel').innerText || 'dashboard';
             addCoverSlide(pptx, dateLabel);
             for (const panel of panels) {
-                const canvas = await html2canvas(panel, { backgroundColor: getComputedStyle(document.body).getPropertyValue('--panel') || '#ffffff', scale: 2 });
+                const canvas = await excelCapture(panel, getComputedStyle(document.body).getPropertyValue('--panel') || '#ffffff');
                 const imgData = canvas.toDataURL('image/png');
                 const slide = pptx.addSlide();
                 addSlideChrome(slide);
@@ -1491,6 +1491,23 @@
             }
         } catch (e) { /* backend belum diperbarui -> tetap isian manual */ }
     }
+    // Untuk export: <textarea> ladle oleh html2canvas tergambar menyamping/terpotong, jadi di salinan (clone)
+    // diganti <div> yang menampilkan tiap baris ke bawah.
+    function excelCapture(panel, bg){
+        return html2canvas(panel, {
+            backgroundColor: bg, scale: 2,
+            onclone: function (doc) {
+                const ta = doc.getElementById('ladleList');
+                if (!ta) return;
+                const d = doc.createElement('div');
+                d.id = 'ladleList';
+                d.className = ta.className;
+                d.style.cssText = 'white-space:pre-wrap;word-break:break-word;height:auto;min-height:0;overflow:visible;font-family:inherit;';
+                d.textContent = ta.value;
+                ta.parentNode.replaceChild(d, ta);
+            }
+        });
+    }
     function fillLadleFromSheet(dateKey){
         const ta = document.getElementById('ladleList');
         const sheetSel = document.getElementById('sheetYearSelect');
@@ -1498,7 +1515,13 @@
         if (!ta || key === ladleFilledKey) return;   // jangan timpa ketikan manual kalau tanggalnya sama
         const ladles = ladleByDate[dateKey];
         if (!ladles) return;
-        ta.value = ladles.filter(l => l.status).map(l => '#' + l.no + '  ' + l.status).join('\n');
+        const lines = ladles
+            .map((l, i) => ({ no: l.no, status: l.status, i }))
+            .filter(l => l.status && !/^\s*average\s*power/i.test(l.status))   // catatan "Average power ..." bukan status ladle
+            .sort((a, b) => ((parseFloat(a.no) || 0) - (parseFloat(b.no) || 0)) || (a.i - b.i))
+            .map(l => '#' + l.no + '  ' + l.status);
+        ta.value = lines.join('\n');
+        ta.rows = Math.max(5, lines.length + 1);
         ladleFilledKey = key;
     }
 
