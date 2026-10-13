@@ -149,6 +149,18 @@
         .excel-stat{ background: var(--panel-2); border:1px solid var(--border); border-radius:8px; padding:10px 14px; flex:1; min-width:130px; }
         .excel-stat .lbl{ font-size:.66rem; color:var(--text-dim); text-transform:uppercase; letter-spacing:.5px; margin-bottom:4px; }
         .excel-stat .val{ font-size:1.3rem; font-weight:800; color:var(--accent); }
+        /* Tema Ceria (merah): angka KPI mengikuti warna teks (hitam di mode terang, putih di mode gelap) */
+        body[data-theme="ceria"] .excel-stat .val, body[data-theme="ceria"] .excel-pack-row .pk-val, body[data-theme="ceria"] .excel-donut-center{ color:var(--text) !important; }
+        .lvl-strip{ display:flex; flex-wrap:wrap; gap:12px; margin:2px 0 8px; }
+        .lvl-box{ flex:1; min-width:250px; display:flex; align-items:center; gap:12px; background:var(--panel-2); border:1px solid var(--border); border-radius:10px; padding:8px 14px; }
+        .lvl-name{ font-size:.68rem; color:var(--text-dim); text-transform:uppercase; font-weight:700; line-height:1.3; }
+        .lvl-name .t{ font-size:.85rem; color:var(--text); }
+        .lvl-val{ font-size:1.5rem; font-weight:800; color:var(--text); }
+        .lvl-val small{ font-size:.7rem; color:var(--text-dim); font-weight:500; }
+        .lvl-range{ font-size:.66rem; color:var(--text-dim); margin-left:auto; text-align:right; white-space:nowrap; }
+        .lvl-range input{ width:52px; background:var(--panel); color:var(--text); border:1px solid var(--border); border-radius:4px; padding:1px 4px; font-size:.7rem; }
+        .lvl-ok{ color:#16a34a !important; } .lvl-bad{ color:#dc2626 !important; }
+        body[data-mode="dark"] .lvl-ok{ color:#4ade80 !important; } body[data-mode="dark"] .lvl-bad{ color:#ff6b6b !important; }
         .excel-stat .unit{ font-size:.7rem; color:var(--text-dim); margin-left:4px; font-weight:500; }
         .excel-achieve{ font-size:1.5rem; font-weight:800; color:var(--accent-2); }
         #ladleList{ width:100%; background: var(--panel-2); border:1px solid var(--border); color:var(--text); border-radius:8px; padding:12px; font-size:.85rem; line-height:1.7; }
@@ -430,6 +442,19 @@
           <div class="excel-stat"><div class="lbl">Electrode Paste (Total 6 Electrode)</div><div class="val" id="excPaste">-</div><span class="unit">Ton</span></div>
           <div class="excel-stat"><div class="lbl">Recycle Scrap</div><div class="val" id="excScrapRecycle">-</div><span class="unit">Ton</span></div>
         </div>
+        <div class="lvl-strip">
+          <div class="lvl-box">
+            <div class="lvl-name">Slag Level<div class="t" id="excSlagTime">-</div></div>
+            <div class="lvl-val"><span id="excSlagLevel">-</span> <small>cm</small></div>
+            <div class="lvl-range">Range: <input type="number" id="excSlagMin" value="70" onchange="levelRangeSave();renderExcelDashboard()"> – <input type="number" id="excSlagMax" value="100" onchange="levelRangeSave();renderExcelDashboard()"> cm</div>
+          </div>
+          <div class="lvl-box">
+            <div class="lvl-name">FeNi Level<div class="t" id="excFeniLvlTime">-</div></div>
+            <div class="lvl-val"><span id="excFeniLevel">-</span> <small>cm</small></div>
+            <div class="lvl-range">Range: <input type="number" id="excFeniMin" value="30" onchange="levelRangeSave();renderExcelDashboard()"> – <input type="number" id="excFeniMax" value="40" onchange="levelRangeSave();renderExcelDashboard()"> cm</div>
+          </div>
+        </div>
+        <div class="excel-note">Level slag &amp; FeNi: merah = di luar range, hijau = sesuai range (range bisa diubah).</div>
         <div class="excel-note">Grafik: konsumsi pasta per elektroda (1–6) pada tanggal terpilih.</div>
         <div class="excel-chart-container"><canvas id="excChartMaterial"></canvas></div>
       </div>
@@ -490,10 +515,7 @@
               <div class="excel-stat"><div class="lbl">%Fe Average</div><div class="val" id="excFeAvg">-</div><span class="unit">%</span></div>
             </div>
             <div class="excel-stat-row">
-              <div class="excel-stat"><div class="lbl">Viscosity Average</div><div class="val" id="excViscosity">-</div><span class="unit">Pa.S</span></div>
               <div class="excel-stat"><div class="lbl">Slag Reclaim</div><div class="val" id="excSlagReclaim">-</div><span class="unit">Ton</span></div>
-            </div>
-            <div class="excel-stat-row">
               <div class="excel-stat"><div class="lbl">Skimming Rate</div><div class="val" id="excSkimmingRate">-</div><span class="unit">TPH</span></div>
             </div>
           </div>
@@ -974,6 +996,10 @@
         smRatio: ['S/M RATIO', 'S/M Average', 'S/M'],
         feAvg: ['%Fe Average', 'Fe Average', 'Fe'],
         viscosity: ['Viscosity Average', 'Viscosity'],
+        timeSlag: ['Time Slag'],
+        levelSlag: ['Level Slag'],
+        timeFeni: ['TIME FeNi'],
+        levelFeni: ['LEVEL FENI'],
         slagReclaim: ['Slag Reclaim'],
         skimmingRate: ['Skimming Rate'],
         northTap: ['North Tap', 'North Tapping'],
@@ -1516,6 +1542,11 @@
             }
         });
     }
+    const LEVEL_RANGE_IDS = ['excSlagMin', 'excSlagMax', 'excFeniMin', 'excFeniMax'];
+    function levelRangeSave(){ try { localStorage.setItem('rkef_level_ranges', JSON.stringify(LEVEL_RANGE_IDS.map(id => document.getElementById(id).value))); } catch (e) {} }
+    function levelRangeLoad(){
+        try { const a = JSON.parse(localStorage.getItem('rkef_level_ranges') || 'null'); if (Array.isArray(a)) LEVEL_RANGE_IDS.forEach((id, i) => { if (a[i] !== '' && a[i] != null) document.getElementById(id).value = a[i]; }); } catch (e) {}
+    }
     function fillLadleFromSheet(dateKey){
         const ta = document.getElementById('ladleList');
         const sheetSel = document.getElementById('sheetYearSelect');
@@ -1939,7 +1970,7 @@
         it.push({ t: 'rrect', x: x + pad, y: y + 0.012 * H, w: w - 2 * pad, h: lh, color: DECK.teal, r: 0.004 * W });
         it.push({ t: 'text', text: String(o.label).toUpperCase(), x: x + pad, y: y + 0.012 * H, w: w - 2 * pad, h: lh, pt: (o.lpt || 10.5) * fs, bold: true, color: 'FFFFFF', align: 'center' });
         const vy = y + 0.012 * H + lh, vh = h - 0.012 * H - lh - 0.006 * H;
-        const runs = [{ text: o.value, pt: (o.vpt || 30) * fs, bold: true, color: DECK.text }];
+        const runs = [{ text: o.value, pt: (o.vpt || 30) * fs, bold: true, color: o.vcolor || DECK.text }];
         if (o.unit) runs.push({ text: ' ' + o.unit, pt: (o.upt || 14) * fs, bold: true, color: DECK.unit });
         if (o.extra) runs.push({ text: '   ' + o.extra, pt: (o.upt || 14) * fs, bold: true, color: DECK.tealDark });
         it.push({ t: 'text', text: runs, x, y: vy, w, h: vh, align: 'center', valign: 'middle' });
@@ -2005,7 +2036,10 @@
         { const it = deckBase('MATERIAL INPUT', W, H, fs);
           [['Daily Calcine Consumption', 'excCalcine', 'TON'], ['GHE', 'excGhe', 'KWH/TON'], ['Recycle Scrap', 'excScrapRecycle', 'TON'], ['Electrode Paste (6 Electrode)', 'excPaste', 'TON']]
             .forEach((k, i) => K(it, { x: 0.035 + i * 0.2375, y: 0.16, w: 0.225, h: 0.2, label: k[0], value: val(k[1]), unit: k[2], vpt: 30, lpt: 9.5 }));
-          deckChartBox(it, W, H, { x: 0.035, y: 0.39, w: 0.93, h: 0.56, chart: excChartMaterial });
+          deckChartBox(it, W, H, { x: 0.035, y: 0.39, w: 0.93, h: 0.42, chart: excChartMaterial });
+          const lvColor = id => { const e = document.getElementById(id); return e && e.classList.contains('lvl-ok') ? '16A34A' : (e && e.classList.contains('lvl-bad') ? 'DC2626' : null); };
+          [['Slag Level  ' + val('excSlagTime'), 'excSlagLevel', 'excSlagMin', 'excSlagMax'], ['FeNi Level  ' + val('excFeniLvlTime'), 'excFeniLevel', 'excFeniMin', 'excFeniMax']].forEach((k, i) =>
+            K(it, { x: 0.035 + i * 0.4725, y: 0.83, w: 0.4575, h: 0.12, label: k[0], value: val(k[1]), unit: 'cm', extra: 'Range: ' + val(k[2]) + ' - ' + val(k[3]) + ' cm', vcolor: lvColor(k[1]), vpt: 24, lpt: 9.5, upt: 12 }));
           slides.push(it); }
 
         // 4. TEMPERATURE PROFILE
@@ -2018,9 +2052,8 @@
         // 5. SKIMMING RECORD
         { const it = deckBase('SKIMMING RECORD', W, H, fs);
           deckDonutBox(it, W, H, fs, { x: 0.035, y: 0.16, w: 0.26, h: 0.545, label: 'Daily Skimming Activities', chart: excDonutSkimming, center: val('excSkimmingCenter').replace(/x/i, '').trim() });
-          const kp = [['Temperature Average', 'excTempSkimming', '°C'], ['Nickel Loss Average', 'excNiLoss', '%'], ['S/M Average', 'excSmRatio', ''], ['%Fe Average', 'excFeAvg', '%'], ['Viscosity Average', 'excViscosity', 'Pa.S'], ['Slag Reclaim', 'excSlagReclaim', 'Ton']];
-          kp.forEach((k, i) => K(it, { x: 0.31 + (i % 2) * 0.3325, y: 0.16 + Math.floor(i / 2) * 0.1375, w: 0.3225, h: 0.125, label: k[0], value: val(k[1]), unit: k[2], vpt: 26, lpt: 9.5 }));
-          K(it, { x: 0.31, y: 0.5725, w: 0.655, h: 0.125, label: 'Skimming Rate', value: val('excSkimmingRate'), unit: 'TPH', vpt: 26, lpt: 9.5 });
+          const kp = [['Temperature Average', 'excTempSkimming', '°C'], ['Nickel Loss Average', 'excNiLoss', '%'], ['S/M Average', 'excSmRatio', ''], ['%Fe Average', 'excFeAvg', '%'], ['Slag Reclaim', 'excSlagReclaim', 'Ton'], ['Skimming Rate', 'excSkimmingRate', 'TPH']];
+          kp.forEach((k, i) => K(it, { x: 0.31 + (i % 2) * 0.3325, y: 0.16 + Math.floor(i / 2) * 0.185, w: 0.3225, h: 0.17, label: k[0], value: val(k[1]), unit: k[2], vpt: 28, lpt: 9.5 }));
           deckChartBox(it, W, H, { x: 0.035, y: 0.72, w: 0.93, h: 0.23, chart: excChartSkimming });
           slides.push(it); }
 
@@ -2120,6 +2153,26 @@
         const pasteTotal = sumVals(row, ['elec1', 'elec2', 'elec3', 'elec4', 'elec5', 'elec6']);
         document.getElementById('excPaste').innerText = fmtNum(pasteTotal, 1);
         document.getElementById('excScrapRecycle').innerText = fmtNum(getVal(row, 'scrapRecycle'), 1);
+        // Slag level & FeNi level: jam + level, diwarnai sesuai range (hijau = sesuai, merah = di luar range)
+        const lvlTime = v => {
+            const m = String(v == null ? '' : v).match(/(\d{1,2}):(\d{2})/);
+            if (m) return m[1].padStart(2, '0') + ':' + m[2];
+            const n = parseFloat(v);
+            if (!isNaN(n) && n > 0 && n < 1) { const mins = Math.round(n * 1440); return String(Math.floor(mins / 60)).padStart(2, '0') + ':' + String(mins % 60).padStart(2, '0'); }
+            return '-';
+        };
+        const setLevel = (valId, timeId, minId, maxId, levelKey, timeKey) => {
+            const raw = getRaw(row, levelKey), el = document.getElementById(valId);
+            const txt = raw == null ? '' : String(raw).trim();
+            const nums = (txt.match(/-?\d+(\.\d+)?/g) || []).map(Number).filter(n => n !== 0);
+            el.innerText = nums.length ? txt : '-';
+            el.classList.remove('lvl-ok', 'lvl-bad');
+            const mn = parseFloat(document.getElementById(minId).value), mx = parseFloat(document.getElementById(maxId).value);
+            if (nums.length && !isNaN(mn) && !isNaN(mx)) el.classList.add(nums.every(n => n >= mn && n <= mx) ? 'lvl-ok' : 'lvl-bad');
+            document.getElementById(timeId).innerText = lvlTime(getRaw(row, timeKey));
+        };
+        setLevel('excSlagLevel', 'excSlagTime', 'excSlagMin', 'excSlagMax', 'levelSlag', 'timeSlag');
+        setLevel('excFeniLevel', 'excFeniLvlTime', 'excFeniMin', 'excFeniMax', 'levelFeni', 'timeFeni');
 
         // ---- TEMPERATURE PROFILE ----
         document.getElementById('excTempBottom').innerText = fmtNum(getVal(row, 'tempBottom'), 0);
@@ -2134,7 +2187,6 @@
         document.getElementById('excNiLoss').innerText = fmtNum(getVal(row, 'niLoss'), 2);
         document.getElementById('excSmRatio').innerText = fmtNum(getVal(row, 'smRatio'), 2);
         document.getElementById('excFeAvg').innerText = fmtNum(getVal(row, 'feAvg'), 2);
-        document.getElementById('excViscosity').innerText = fmtNum(getVal(row, 'viscosity'), 2);
         document.getElementById('excSlagReclaim').innerText = fmtNum(getVal(row, 'slagReclaim'), 0);
         document.getElementById('excSkimmingRate').innerText = fmtNum(getVal(row, 'skimmingRate'), 0);
 
@@ -2743,6 +2795,7 @@
     function applyTheme(themeId, mode){
         const theme = THEMES.find(t=> t.id===themeId) || THEMES[0];
         currentTheme = theme.id;
+        document.body.setAttribute('data-theme', theme.id);
         if(theme.id === "default"){
             ["--accent","--accent-dim","--accent-2","--accent-3","--bg","--panel","--panel-2",
              "--border","--grid-line","--stripe","--topbar-bg"
@@ -2843,6 +2896,7 @@
     $(document).ready(function() {
         initLayout();
         applyTheme(currentTheme, chartMode);
+        levelRangeLoad();
         const initColors = chartColors();
         const cfg = { 
             responsive: true, 
