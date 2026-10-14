@@ -151,6 +151,13 @@
         .excel-stat .val{ font-size:1.3rem; font-weight:800; color:var(--accent); }
         /* Tema Ceria (merah): angka KPI mengikuti warna teks (hitam di mode terang, putih di mode gelap) */
         body[data-theme="ceria"] .excel-stat .val, body[data-theme="ceria"] .excel-pack-row .pk-val, body[data-theme="ceria"] .excel-donut-center{ color:var(--text) !important; }
+        .inp-grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(210px,1fr)); gap:8px 12px; max-height:62vh; overflow:auto; padding-right:4px; }
+        .inp-field.inp-wide{ grid-column:span 2; }
+        .inp-lbl{ font-size:.7rem; color:var(--text-dim); display:block; margin-bottom:2px; }
+        .inp-letter{ display:inline-block; min-width:22px; font-weight:700; color:var(--accent); }
+        .inp-grid .inp-cell{ background:var(--panel-2); color:var(--text); border-color:var(--border); }
+        .inp-grid .inp-cell.inp-formula{ background:var(--stripe); }
+        .inp-grid .inp-cell.inp-formula::placeholder{ color:var(--text-dim); font-style:italic; }
         .lvl-strip{ display:flex; flex-wrap:wrap; gap:12px; margin:2px 0 8px; }
         .lvl-box{ flex:1; min-width:250px; display:flex; align-items:center; gap:12px; background:var(--panel-2); border:1px solid var(--border); border-radius:10px; padding:8px 14px; }
         .lvl-name{ font-size:.68rem; color:var(--text-dim); text-transform:uppercase; font-weight:700; line-height:1.3; }
@@ -303,6 +310,7 @@
     <div class="view-toggle" role="tablist">
       <button type="button" id="btnViewAnalytics" class="active" onclick="switchView('analytics')">📈 Analitik Data</button>
       <button type="button" id="btnViewExcel" onclick="switchView('excel')">🏭 Dashboard Produksi</button>
+      <button type="button" id="btnViewInput" onclick="switchView('input')" style="display:none;">✍️ Input Data</button>
       <button type="button" id="btnViewAdmin" onclick="switchView('admin')" style="display:none;">🛡️ Admin</button>
     </div>
     <div class="d-flex align-items-center gap-2" id="userInfoBar" style="display:none;">
@@ -676,6 +684,50 @@
 
 </div><!-- /viewExcel -->
 
+<div id="viewInput" style="display:none;">
+  <div class="card p-3 mb-3">
+    <div class="d-flex flex-wrap align-items-end gap-2 mb-2">
+      <h5 class="mb-0 me-3">✍️ Input Data Harian</h5>
+      <div>
+        <label class="form-label small text-secondary mb-1 d-block">Sheet tujuan</label>
+        <select id="inputSheet" class="form-select form-select-sm" onchange="inputReload()" style="min-width:130px;">
+          <option value="Data 2026">Data 2026</option>
+          <option value="Data 2025">Data 2025</option>
+        </select>
+      </div>
+      <button class="btn btn-sm btn-outline-info" onclick="inputLoadRow()">📥 Muat data tanggal ini</button>
+      <button class="btn btn-sm btn-outline-secondary" onclick="inputClear()">🧹 Kosongkan form</button>
+      <button class="btn btn-sm btn-info ms-auto" onclick="inputSave()">💾 Simpan ke sheet</button>
+    </div>
+    <div class="row g-2 align-items-end">
+      <div class="col-lg-8">
+        <label class="form-label small text-secondary mb-1">Tempel 1 baris data (copy kolom A sampai akhir dari Excel/GSheet)</label>
+        <textarea id="inputPaste" class="form-control form-control-sm" rows="3" placeholder="Copy 1 baris data lalu paste di sini — form di bawah terisi otomatis" onpaste="setTimeout(inputFillFromPaste, 50)"></textarea>
+      </div>
+      <div class="col-lg-4">
+        <label class="form-label small text-secondary mb-1 d-block">Format tanggal tempelan</label>
+        <select id="inputDateOrder" class="form-select form-select-sm mb-2">
+          <option value="mdy">Bulan/Hari/Tahun (US)</option>
+          <option value="dmy">Hari/Bulan/Tahun</option>
+        </select>
+        <button class="btn btn-sm btn-outline-info" onclick="inputFillFromPaste()">⬇️ Isi form dari tempelan</button>
+      </div>
+    </div>
+    <div class="form-check mt-2 small">
+      <input class="form-check-input" type="checkbox" id="inputSkipFormula" checked>
+      <label class="form-check-label" for="inputSkipFormula">Jangan timpa sel yang berisi rumus di sheet (disarankan)</label>
+    </div>
+    <div class="small mt-2 text-secondary" id="inputStatus">Buka tab ini untuk memuat daftar kolom.</div>
+  </div>
+  <div class="card p-3">
+    <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+      <input type="search" id="inputFilter" class="form-control form-control-sm" style="max-width:280px;" placeholder="Cari kolom..." oninput="inputFilter()">
+      <span class="small text-secondary">Kolom tanpa judul di sheet tidak ditampilkan. Tanggal yang sudah ada di sheet akan diperbarui; tanggal baru ditambahkan di baris paling bawah.</span>
+    </div>
+    <div id="inputGrid" class="inp-grid"></div>
+  </div>
+</div><!-- /viewInput -->
+
 <div id="viewAdmin" style="display:none;">
   <div class="card p-3">
     <div class="d-flex justify-content-between align-items-center mb-2">
@@ -885,6 +937,8 @@
         if (uploadWrap) uploadWrap.style.display = isAdmin ? '' : 'none';
         const btnAdmin = document.getElementById('btnViewAdmin');
         if (btnAdmin) btnAdmin.style.display = isAdmin ? '' : 'none';
+        const btnInput = document.getElementById('btnViewInput');
+        if (btnInput) btnInput.style.display = inputCanUse() ? '' : 'none';
     }
 
     function enterApp(){
@@ -2101,17 +2155,180 @@
         return slides;
     }
 
+    // ==================== INPUT DATA HARIAN (tulis ke sheet Data 2026/2025 per tanggal) ====================
+    const INPUT_ROLES = ['admin', 'engineer', 'supervisor'];   // harus sama dengan INPUT_ROLES di Code.gs
+    let inputHeaders = [];        // [{col, letter, title}] hanya kolom yang punya judul
+    let inputDateCol = 0;
+    let inputNoteFrom = 9999;     // kolom setelah SIDEWALL = catatan (kotak teks lebih besar)
+    let inputOriginal = {};       // nilai awal saat "Muat data tanggal ini" (untuk mendeteksi sel yang diubah)
+    let inputLoadedKey = '';
+
+    function inputCanUse(){ return !!(currentUser && INPUT_ROLES.indexOf(currentUser.role) >= 0); }
+    function inputStatus(html, cls){ const el = document.getElementById('inputStatus'); el.className = 'small mt-2 ' + (cls || 'text-secondary'); el.innerHTML = html; }
+
+    async function inputApi(params){
+        const q = Object.keys(params).map(k => k + '=' + encodeURIComponent(params[k])).join('&');
+        const res = await fetch(SHEET_WEBAPP_URL + '?' + q + '&t=' + Date.now() + authQs());
+        const j = await res.json();
+        if (j && j.error === 'unauthorized') throw new Error(j.message || 'Sesi tidak valid, silakan login ulang.');
+        if (!j || !j.ok) throw new Error((j && j.message) || 'Permintaan gagal (pastikan Code.gs sudah diperbarui).');
+        return j;
+    }
+    function inputSheetName(){ return document.getElementById('inputSheet').value; }
+
+    async function inputInit(){
+        if (!inputCanUse()) { inputStatus('Akun Anda tidak punya izin input data.', 'text-danger'); return; }
+        if (!inputHeaders.length) await inputReload();
+    }
+    async function inputReload(){
+        inputStatus('Memuat daftar kolom dari sheet "' + inputSheetName() + '"...');
+        try {
+            const j = await inputApi({ action: 'inputHeaders', sheet: inputSheetName() });
+            inputHeaders = j.headers.filter(h => h.title);          // judul kosong -> tidak ditampilkan
+            inputDateCol = j.dateCol;
+            const sw = inputHeaders.find(h => /^sidewall$/i.test(h.title));
+            inputNoteFrom = sw ? sw.col : 9999;
+            inputRenderForm();
+            inputStatus(inputHeaders.length + ' kolom siap diisi.');
+        } catch (e) { inputStatus(thermalEsc(e.message), 'text-danger'); }
+    }
+    function inputRenderForm(){
+        const seen = {};
+        inputHeaders.forEach(h => { seen[h.title] = (seen[h.title] || 0) + 1; });
+        const html = inputHeaders.map(h => {
+            const dup = seen[h.title] > 1;
+            const label = thermalEsc(h.title) + (dup ? ' <span class="text-secondary">(' + h.letter + ')</span>' : '');
+            const long = h.col > inputNoteFrom || /note/i.test(h.title);
+            let ctl;
+            if (h.col === inputDateCol) ctl = '<input type="date" class="form-control form-control-sm inp-cell" id="inputDate" data-col="' + h.col + '">';
+            else if (long) ctl = '<textarea rows="2" class="form-control form-control-sm inp-cell" data-col="' + h.col + '"></textarea>';
+            else ctl = '<input type="text" class="form-control form-control-sm inp-cell" data-col="' + h.col + '">';
+            return '<div class="inp-field' + (long ? ' inp-wide' : '') + '" data-label="' + thermalEsc(h.title.toLowerCase()) + '"><label class="inp-lbl"><span class="inp-letter">' + h.letter + '</span> ' + label + '</label>' + ctl + '</div>';
+        }).join('');
+        document.getElementById('inputGrid').innerHTML = html;
+        const d = document.getElementById('inputDate');
+        if (d) d.addEventListener('change', () => { inputLoadedKey = ''; });
+    }
+    function inputFilter(){
+        const q = document.getElementById('inputFilter').value.trim().toLowerCase();
+        document.querySelectorAll('#inputGrid .inp-field').forEach(f => { f.style.display = (!q || f.dataset.label.indexOf(q) >= 0) ? '' : 'none'; });
+    }
+    function inputClear(){
+        document.querySelectorAll('#inputGrid .inp-cell').forEach(el => { el.value = ''; el.placeholder = ''; el.classList.remove('inp-formula'); });
+        inputOriginal = {}; inputLoadedKey = '';
+        inputStatus('Form dikosongkan.');
+    }
+    // Penguraian teks tempelan (TSV dari Excel/GSheet). Sel yang berisi enter/tab dibungkus tanda kutip.
+    function inputParseTsv(text){
+        const rows = []; let row = [], cur = '', inQ = false;
+        for (let i = 0; i < text.length; i++) {
+            const ch = text[i];
+            if (inQ) { if (ch === '"') { if (text[i + 1] === '"') { cur += '"'; i++; } else inQ = false; } else cur += ch; }
+            else if (ch === '"' && cur === '') inQ = true;
+            else if (ch === '\t') { row.push(cur); cur = ''; }
+            else if (ch === '\n' || ch === '\r') { if (ch === '\r' && text[i + 1] === '\n') i++; row.push(cur); cur = ''; rows.push(row); row = []; }
+            else cur += ch;
+        }
+        if (cur !== '' || row.length) { row.push(cur); rows.push(row); }
+        return rows.filter(r => r.some(c => String(c).trim() !== ''));
+    }
+    function inputParseDate(s, dmy){
+        s = String(s || '').trim();
+        let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+        const pad = n => String(n).padStart(2, '0');
+        if (m) return m[1] + '-' + pad(m[2]) + '-' + pad(m[3]);
+        m = s.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})/);
+        if (m) {
+            const a = +m[1], b = +m[2];
+            let d, mo;
+            if (a > 12) { d = a; mo = b; } else if (b > 12) { mo = a; d = b; } else if (dmy) { d = a; mo = b; } else { mo = a; d = b; }
+            return m[3] + '-' + pad(mo) + '-' + pad(d);
+        }
+        const t = Date.parse(s);
+        if (!isNaN(t)) { const d = new Date(t); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
+        return '';
+    }
+    function inputFillFromPaste(){
+        if (!inputHeaders.length) { inputStatus('Daftar kolom belum dimuat.', 'text-danger'); return; }
+        const rows = inputParseTsv(document.getElementById('inputPaste').value);
+        const dataRows = rows.filter(r => !/^date$/i.test(String(r[0] || '').trim()));
+        if (!dataRows.length) { inputStatus('Tidak ada baris data pada tempelan.', 'text-danger'); return; }
+        const r = dataRows[0];
+        const dmy = document.getElementById('inputDateOrder').value === 'dmy';
+        let filled = 0;
+        inputHeaders.forEach(h => {
+            const el = document.querySelector('#inputGrid .inp-cell[data-col="' + h.col + '"]');
+            if (!el) return;
+            let v = r[h.col] == null ? '' : String(r[h.col]).trim();
+            if (/^#/.test(v)) v = '';                              // #DIV/0!, #VALUE!, dst. tidak dipakai
+            if (h.col === inputDateCol) v = inputParseDate(v, dmy);
+            el.value = v; el.placeholder = ''; el.classList.remove('inp-formula');
+            if (v !== '') filled++;
+        });
+        inputOriginal = {}; inputLoadedKey = '';
+        const d = document.getElementById('inputDate').value;
+        inputStatus(filled + ' kolom terisi dari tempelan.' + (d ? ' Tanggal terbaca: <b>' + thermalEsc(d) + '</b> — cek, lalu klik "Simpan ke sheet".' : ' <span class="text-warning">Tanggal tidak terbaca, isi manual.</span>') +
+            (dataRows.length > 1 ? ' <span class="text-warning">(Tempelan berisi ' + dataRows.length + ' baris; hanya baris pertama yang dipakai.)</span>' : ''));
+    }
+    async function inputLoadRow(){
+        const date = document.getElementById('inputDate').value;
+        if (!date) { inputStatus('Isi tanggal dulu.', 'text-danger'); return; }
+        inputStatus('Memuat data tanggal ' + thermalEsc(date) + '...');
+        try {
+            const j = await inputApi({ action: 'inputRow', sheet: inputSheetName(), date });
+            if (!j.found) { inputStatus('Tanggal ' + thermalEsc(date) + ' belum ada di sheet — simpan akan menambah baris baru.', 'text-warning'); return; }
+            inputOriginal = {};
+            let n = 0, nf = 0;
+            inputHeaders.forEach(h => {
+                if (h.col === inputDateCol) return;
+                const el = document.querySelector('#inputGrid .inp-cell[data-col="' + h.col + '"]');
+                const c = j.cells[h.col] || { v: '', f: false };
+                el.classList.toggle('inp-formula', !!c.f);
+                if (c.f) { el.value = ''; el.placeholder = c.v ? '= ' + c.v : '(rumus)'; inputOriginal[h.col] = ''; nf++; }
+                else { el.value = c.v; el.placeholder = ''; inputOriginal[h.col] = c.v; if (c.v !== '') n++; }
+            });
+            inputLoadedKey = inputSheetName() + '|' + date;
+            inputStatus('Baris ' + j.row + ' dimuat: ' + n + ' sel berisi, ' + nf + ' sel berumus (ditampilkan abu-abu, tidak ikut tersimpan kecuali Anda ketik sesuatu).');
+        } catch (e) { inputStatus(thermalEsc(e.message), 'text-danger'); }
+    }
+    async function inputSave(){
+        const date = document.getElementById('inputDate').value;
+        if (!date) { alert('Isi tanggal dulu.'); return; }
+        const loaded = inputLoadedKey === inputSheetName() + '|' + date;
+        const cells = {};
+        inputHeaders.forEach(h => {
+            if (h.col === inputDateCol) return;
+            const v = document.querySelector('#inputGrid .inp-cell[data-col="' + h.col + '"]').value.trim();
+            if (loaded) { const o = inputOriginal[h.col] || ''; if (v !== o) cells[h.col] = (v === '' ? null : v); }
+            else if (v !== '') cells[h.col] = v;
+        });
+        if (!Object.keys(cells).length) { inputStatus('Tidak ada isian yang perlu disimpan.', 'text-warning'); return; }
+        if (!confirm('Simpan ' + Object.keys(cells).length + ' kolom ke sheet "' + inputSheetName() + '" untuk tanggal ' + date + '?\nJika tanggal itu sudah ada, barisnya diperbarui.')) return;
+        inputStatus('Menyimpan...');
+        try {
+            const r = await authPost({ action: 'inputSave', username: currentUser.username, token: currentUser.token, sheet: inputSheetName(), date, cells, skipFormula: document.getElementById('inputSkipFormula').checked });
+            if (!r || !r.ok) throw new Error((r && r.message) || 'Backend menolak (pastikan Code.gs sudah diperbarui).');
+            inputStatus((r.mode === 'update' ? 'Baris ' + r.row + ' diperbarui' : 'Baris baru ditambahkan di baris ' + r.row) + ': ' + r.written + ' sel ditulis' + (r.skippedFormula ? ', ' + r.skippedFormula + ' sel berumus dilewati' : '') + '.', 'text-success');
+            inputLoadedKey = '';
+            loadProduksiData(false);
+        } catch (e) { inputStatus(thermalEsc(e.message), 'text-danger'); }
+    }
+
     // ==== Tab: Analitik Data <-> Dashboard Produksi <-> Admin ====
     function switchView(view){
         document.getElementById('viewAnalytics').style.display = view === 'analytics' ? '' : 'none';
         document.getElementById('viewExcel').style.display = view === 'excel' ? '' : 'none';
         document.getElementById('viewAdmin').style.display = view === 'admin' ? '' : 'none';
+        document.getElementById('viewInput').style.display = view === 'input' ? '' : 'none';
+        const btnInput = document.getElementById('btnViewInput');
+        if (btnInput) btnInput.classList.toggle('active', view === 'input');
         document.getElementById('btnViewAnalytics').classList.toggle('active', view === 'analytics');
         document.getElementById('btnViewExcel').classList.toggle('active', view === 'excel');
         const btnAdmin = document.getElementById('btnViewAdmin');
         if (btnAdmin) btnAdmin.classList.toggle('active', view === 'admin');
         if (view === 'excel') renderExcelDashboard();
         if (view === 'admin') loadPendingUsers();
+        if (view === 'input') inputInit();
     }
 
     function fmtNum(v, dec) { return (v === null || v === undefined || isNaN(v)) ? '-' : Number(v).toFixed(dec === undefined ? 1 : dec); }
