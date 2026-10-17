@@ -418,6 +418,7 @@
       <div class="excel-export-bar">
         <button class="btn btn-sm btn-outline-info" id="btnPinMode" onclick="togglePinMode()">📌 Mode Pin Data</button>
         <button class="btn btn-sm btn-outline-info" id="btnShowAllData" onclick="toggleShowAllData()">🔍 Tampilkan Semua Data</button>
+        <button class="btn btn-sm btn-outline-info" id="btnNumCallout" onclick="toggleNumberCallout()" title="Tampilkan hanya angka di titik data, posisinya diatur otomatis agar tidak saling menumpuk">🔢 Callout Angka</button>
         <select id="exportStyleSelect" class="form-select form-select-sm" style="width:auto;" title="Gaya isi slide/halaman export">
           <option value="panel">Gaya: Panel Dashboard</option>
           <option value="deck">Gaya: Laporan (deck)</option>
@@ -483,6 +484,15 @@
           <div class="excel-stat"><div class="lbl">Bottom</div><div class="val" id="excTempBottom">-</div><span class="unit">°C</span></div>
           <div class="excel-stat"><div class="lbl">Freeboard</div><div class="val" id="excTempFreeboard">-</div><span class="unit">°C</span></div>
           <div class="excel-stat"><div class="lbl">Sidewall</div><div class="val" id="excTempSidewall">-</div><span class="unit">°C</span></div>
+        </div>
+        <div class="excel-stat-row">
+          <div class="excel-stat"><div class="lbl">Bottom (Lowest – Highest)</div><div class="val" id="excTempBottomRange" style="font-size:1.05rem;">-</div><span class="unit" id="excTempBottomRangeLoc">°C</span></div>
+          <div class="excel-stat"><div class="lbl">Freeboard (Lowest – Highest)</div><div class="val" id="excTempFreeboardRange" style="font-size:1.05rem;">-</div><span class="unit" id="excTempFreeboardRangeLoc">°C</span></div>
+          <div class="excel-stat"><div class="lbl">Sidewall (Lowest – Highest)</div><div class="val" id="excTempSidewallRange" style="font-size:1.05rem;">-</div><span class="unit" id="excTempSidewallRangeLoc">°C</span></div>
+        </div>
+        <div class="form-check form-switch small mb-1" data-html2canvas-ignore="true">
+          <input class="form-check-input" type="checkbox" id="excTempShowRange" onchange="renderExcelDashboard()">
+          <label class="form-check-label" for="excTempShowRange">Tampilkan garis Lowest/Highest di grafik</label>
         </div>
         <div class="excel-chart-container"><canvas id="excChartTemp"></canvas></div>
       </div>
@@ -754,11 +764,21 @@
           <option value="mdy">Bulan/Hari/Tahun (US)</option>
           <option value="dmy">Hari/Bulan/Tahun</option>
         </select>
+        <label class="form-label small text-secondary mb-1 d-block">Kolom DM di file sumber</label>
+        <select id="inputHiddenCol" class="form-select form-select-sm" title="Kolom DM yang disembunyikan di Excel tidak ikut tersalin, sehingga data setelahnya harus digeser satu kolom">
+          <option value="auto">Otomatis (deteksi dari jumlah kolom)</option>
+          <option value="skip">Tersembunyi → lewati DM</option>
+          <option value="none">Tampil (tempelan lengkap A–ER)</option>
+        </select>
       </div>
     </div>
     <div class="form-check mt-2 small">
       <input class="form-check-input" type="checkbox" id="inputSkipFormula" checked>
       <label class="form-check-label" for="inputSkipFormula">Jangan timpa sel yang berisi rumus di sheet (disarankan)</label>
+    </div>
+    <div class="form-check small">
+      <input class="form-check-input" type="checkbox" id="inputClearBlank" checked>
+      <label class="form-check-label" for="inputClearBlank">Tempelan = ganti seluruh baris: kosongkan sel di sheet yang kosong pada tempelan (bukan sel berumus)</label>
     </div>
     <div class="small mt-2 text-secondary" id="inputStatus">Buka tab ini untuk memuat daftar kolom.</div>
   </div>
@@ -983,7 +1003,7 @@
         const btnInput = document.getElementById('btnViewInput');
         if (btnInput) btnInput.style.display = inputCanUse() ? '' : 'none';
         const capP = document.getElementById('capturePanel');
-        if (capP) capP.style.display = inputCanUse() ? '' : 'none';
+        if (capP) capP.style.display = captureCanUse() ? '' : 'none';
     }
 
     function enterApp(){
@@ -1076,6 +1096,9 @@
         calcineTotal: ['Total calcine', 'Daily Calcine Consume', 'Calcine consume'],
         ghe: ['GHE'],
         scrapRecycle: ['Recycle scrap', 'SCRAP Recycle'],
+        tempBottomRange: ['BOTTOM (Lowest to Highest)'],
+        tempFreeboardRange: ['FREEBOARD (Lowest to Highest)'],
+        tempSidewallRange: ['SIDEWALL (Lowest to Highest)'],
         tempBottom: ['Temp Bottom', 'Bottom Average Temperature', 'Bottom Temp', 'Bottom'],
         tempFreeboard: ['Freeboard temp', 'Freeboard Average Temperature', 'Freeboard'],
         tempSidewall: ['sidewall temp', 'Sidewall Average Temperature', 'Sidewall Temp', 'Sidewall'],
@@ -1172,6 +1195,23 @@
         const raw = String(getRaw(row, fieldKey));
         const m = raw.match(/\(([^)]+)\)/);
         return fmtNum(num, 0) + ' cm' + (m ? ' (' + m[1] + ')' : '');
+    }
+    // Hanya cocok nama header persis (tanpa pencocokan mirip), dipakai untuk kolom "... (Lowest to Highest)"
+    function getRawExact(row, fieldKey){
+        const keys = Object.keys(row);
+        for (const cand of (EXCEL_FIELDS[fieldKey] || [fieldKey])) {
+            const nc = normKey(cand), hit = keys.find(k => normKey(k) === nc);
+            if (hit && row[hit] !== '' && row[hit] != null) return row[hit];
+        }
+        return null;
+    }
+    // "743.8 C (el#2), 782.1C (el#3)," -> {lo:{v:743.8, loc:'(el#2)'}, hi:{v:782.1, loc:'(el#3)'}}
+    function parseTempRange(s){
+        if (s == null) return null;
+        const re = /(-?\d+(?:\.\d+)?)\s*(?:°\s*)?C?\s*\(([^)]*)\)/gi, str = String(s), m = [];
+        let x;
+        while ((x = re.exec(str))) m.push({ v: parseFloat(x[1]), loc: '(' + x[2].trim() + ')' });
+        return m.length ? { lo: m[0], hi: m[m.length - 1] } : null;
     }
     function getVal(row, fieldKey){
         const candidates = EXCEL_FIELDS[fieldKey] || [fieldKey];
@@ -1473,6 +1513,7 @@
             const dateLabel = document.getElementById('excelDateLabel').innerText || 'dashboard';
 
             pdfAddCoverPage(pdf, pageW, pageH, dateLabel);
+            const thermalP = thermalPrepareSlides(dateLabel), capP = capturePrepareSlides(dateLabel);   // unduh paralel dengan proses gambar panel
 
             const margin = 4, gap = 3, topSafe = 12, bottomSafe = 6;
             const usableW = pageW - margin * 2;
@@ -1483,8 +1524,9 @@
             const deckMode = document.getElementById('exportStyleSelect').value === 'deck';
             if (deckMode) deckBuildSlides(pageW, pageH, 0.877).forEach(items => thermalRenderPdf(pdf, items, pageW, pageH));
             for (const panel of (deckMode ? [] : panels)) {
+                if (btn) btn.innerText = '⏳ Menyiapkan ' + (panels.indexOf(panel) + 1) + '/' + panels.length + '...';
                 const canvas = await excelCapture(panel, bg);
-                const imgData = canvas.toDataURL('image/png');
+                const imgData = canvas.toDataURL('image/jpeg', 0.92);
                 const ratio = canvas.height / canvas.width;
                 let w = usableW, h = w * ratio;
                 if (h > maxH) { h = maxH; w = h / ratio; }
@@ -1496,13 +1538,14 @@
                     pageHasChrome = true;
                 }
                 const x = margin + (usableW - w) / 2;
-                pdf.addImage(imgData, 'PNG', x, cursorY, w, h);
+                pdf.addImage(imgData, 'JPEG', x, cursorY, w, h);
                 cursorY += h + gap;
             }
 
-            const thermalSlides = await thermalPrepareSlides(dateLabel);
+            if (btn) btn.innerText = '⏳ Menunggu foto thermal/capture...';
+            const thermalSlides = await thermalP;
             thermalSlides.forEach(s => thermalRenderPdf(pdf, thermalBuildItems(s, pageW, pageH, 0.877), pageW, pageH));
-            const capSlides = await capturePrepareSlides(dateLabel);
+            const capSlides = await capP;
             capSlides.forEach(s => thermalRenderPdf(pdf, captureBuildItems(s, pageW, pageH, 0.877), pageW, pageH));
 
             pdfAddThankYouPage(pdf, pageW, pageH);
@@ -1598,11 +1641,13 @@
             pptx.layout = 'WIDE';
             const dateLabel = document.getElementById('excelDateLabel').innerText || 'dashboard';
             addCoverSlide(pptx, dateLabel);
+            const thermalP = thermalPrepareSlides(dateLabel), capP = capturePrepareSlides(dateLabel);   // unduh paralel dengan proses gambar panel
             const deckMode = document.getElementById('exportStyleSelect').value === 'deck';
             if (deckMode) deckBuildSlides(13.33, 7.5, 1).forEach(items => thermalRenderPptx(pptx, items));
             for (const panel of (deckMode ? [] : panels)) {
+                if (btn) btn.innerText = '⏳ Menyiapkan ' + (panels.indexOf(panel) + 1) + '/' + panels.length + '...';
                 const canvas = await excelCapture(panel, getComputedStyle(document.body).getPropertyValue('--panel') || '#ffffff');
-                const imgData = canvas.toDataURL('image/png');
+                const imgData = canvas.toDataURL('image/jpeg', 0.92);
                 const slide = pptx.addSlide();
                 addSlideChrome(slide);
                 const ratio = canvas.height / canvas.width;
@@ -1611,9 +1656,10 @@
                 if (h > maxH) { h = maxH; w = h / ratio; }
                 slide.addImage({ data: imgData, x: (13.33 - w) / 2, y: 0.65 + (6.65 - h) / 2, w, h });
             }
-            const thermalSlides = await thermalPrepareSlides(dateLabel);
+            if (btn) btn.innerText = '⏳ Menunggu foto thermal/capture...';
+            const thermalSlides = await thermalP;
             thermalSlides.forEach(s => thermalRenderPptx(pptx, thermalBuildItems(s, 13.33, 7.5, 1)));
-            const capSlides = await capturePrepareSlides(dateLabel);
+            const capSlides = await capP;
             capSlides.forEach(s => thermalRenderPptx(pptx, captureBuildItems(s, 13.33, 7.5, 1)));
             addThankYouSlide(pptx);
             await pptx.writeFile({ fileName: `Furnace_Daily_Report_${dateLabel}.pptx` });
@@ -1644,7 +1690,13 @@
     // diganti <div> yang menampilkan tiap baris ke bawah.
     function excelCapture(panel, bg){
         return html2canvas(panel, {
-            backgroundColor: bg, scale: 2,
+            backgroundColor: bg, scale: 1.6,
+            // html2canvas menyalin SELURUH halaman tiap kali dipanggil: lewati tampilan lain (tabel Analitik besar, dll.)
+            // dan canvas grafik milik panel lain supaya jauh lebih cepat.
+            ignoreElements: function (el) {
+                if (el.id === 'viewAnalytics' || el.id === 'viewInput' || el.id === 'viewAdmin' || el.id === 'authOverlay') return true;
+                return el.tagName === 'CANVAS' && !panel.contains(el);
+            },
             onclone: function (doc) {
                 const ta = doc.getElementById('ladleList');
                 if (!ta) return;
@@ -1909,7 +1961,50 @@
             el.innerHTML = Object.keys(by).sort().reverse().slice(0, 10).map(d => '<div><b>' + thermalEsc(d) + '</b> — ' + by[d].sort().map(thermalEsc).join(', ') + '</div>').join('');
         } catch (e) { el.textContent = 'Daftar belum bisa dimuat (pastikan Code.gs sudah diperbarui & Drive diizinkan).'; }
     }
+    // Cache gambar foto thermal/capture: gambar tidak pernah berubah untuk fileId yang sama, jadi export berikutnya jauh lebih cepat.
+    const imgMem = new Map();
+    let imgDbP = null;
+    function imgDb(){
+        if (imgDbP) return imgDbP;
+        imgDbP = new Promise(res => {
+            try { const rq = indexedDB.open('rkef_img_cache', 1); rq.onupgradeneeded = () => rq.result.createObjectStore('img'); rq.onsuccess = () => res(rq.result); rq.onerror = () => res(null); }
+            catch (e) { res(null); }
+        });
+        return imgDbP;
+    }
+    async function imgCacheGet(id){
+        if (imgMem.has(id)) return imgMem.get(id);
+        const db = await imgDb();
+        if (!db) return null;
+        return new Promise(res => {
+            try { const rq = db.transaction('img').objectStore('img').get(id); rq.onsuccess = () => { if (rq.result) imgMem.set(id, rq.result); res(rq.result || null); }; rq.onerror = () => res(null); }
+            catch (e) { res(null); }
+        });
+    }
+    async function imgCacheSet(id, data){
+        imgMem.set(id, data);
+        const db = await imgDb();
+        if (!db) return;
+        try {
+            const store = db.transaction('img', 'readwrite').objectStore('img');
+            store.put(data, id);
+            const cnt = store.count();
+            cnt.onsuccess = () => { if (cnt.result > 150) store.clear(); };   // batasi ukuran cache
+        } catch (e) {}
+    }
+    async function imgCacheDelete(id){
+        imgMem.delete(id);
+        const db = await imgDb();
+        if (db) { try { db.transaction('img', 'readwrite').objectStore('img').delete(id); } catch (e) {} }
+    }
     async function thermalFetchImageData(id){
+        const cached = await imgCacheGet(id);
+        if (cached) return cached;
+        const data = await thermalFetchImageDataRemote(id);
+        imgCacheSet(id, data);
+        return data;
+    }
+    async function thermalFetchImageDataRemote(id){
         const r = await fetch(SHEET_WEBAPP_URL + '?action=thermalImage&id=' + encodeURIComponent(id) + authQs());
         const j = await r.json();
         if (!j || !j.ok) throw new Error('thermalImage gagal');
@@ -1940,7 +2035,7 @@
                     } catch (e) {}
                 }
             };
-            await Promise.all([worker(), worker(), worker(), worker()]);
+            await Promise.all(Array.from({ length: 6 }, worker));
             slides.push({ level, dates, cells });
         }
         return slides;
@@ -2223,6 +2318,10 @@
     let inputNoteFrom = 9999;     // kolom setelah SIDEWALL = catatan (kotak teks lebih besar)
     let inputOriginal = {};       // nilai awal saat "Muat data tanggal ini" (untuk mendeteksi sel yang diubah)
     let inputLoadedKey = '';
+    let inputFromPaste = false;          // form terakhir diisi dari tempelan
+    let inputPasteCols = new Set();      // kolom yang tercakup tempelan (dipakai untuk 'kosongkan sel kosong')
+    const INPUT_SKIP_IDX = 116;          // kolom DM (indeks mulai 0): di file sumber kolom ini tersembunyi sehingga tidak ikut tersalin
+    const INPUT_FULL_COLS = 148;         // A..ER
 
     function inputCanUse(){ return !!(currentUser && INPUT_ROLES.indexOf(currentUser.role) >= 0); }
     function inputStatus(html, cls){ const el = document.getElementById('inputStatus'); el.className = 'small mt-2 ' + (cls || 'text-secondary'); el.innerHTML = html; }
@@ -2276,7 +2375,7 @@
     }
     function inputClear(){
         document.querySelectorAll('#inputGrid .inp-cell').forEach(el => { el.value = ''; el.placeholder = ''; el.classList.remove('inp-formula'); });
-        inputOriginal = {}; inputLoadedKey = '';
+        inputOriginal = {}; inputLoadedKey = ''; inputFromPaste = false; inputPasteCols = new Set();
         inputStatus('Form dikosongkan.');
     }
     // Penguraian teks tempelan (TSV dari Excel/GSheet). Sel yang berisi enter/tab dibungkus tanda kutip.
@@ -2316,19 +2415,26 @@
         if (!dataRows.length) { inputStatus('Tidak ada baris data pada tempelan.', 'text-danger'); return; }
         const r = dataRows[0];
         const dmy = document.getElementById('inputDateOrder').value === 'dmy';
+        const hiddenMode = document.getElementById('inputHiddenCol').value;
+        // Kolom DM tersembunyi di Excel -> tidak ikut tersalin -> data setelah DM harus digeser 1 kolom ke kanan
+        const shift = hiddenMode === 'skip' ? true : (hiddenMode === 'none' ? false : (r.length === INPUT_FULL_COLS - 1 || (r.length < INPUT_FULL_COLS - 1 && r.length > INPUT_SKIP_IDX)));
+        inputPasteCols = new Set();
         let filled = 0;
         inputHeaders.forEach(h => {
             const el = document.querySelector('#inputGrid .inp-cell[data-col="' + h.col + '"]');
             if (!el) return;
-            let v = r[h.col] == null ? '' : String(r[h.col]).trim();
+            let si = h.col, blankByShift = false;
+            if (shift) { if (h.col === INPUT_SKIP_IDX) blankByShift = true; else if (h.col > INPUT_SKIP_IDX) si = h.col - 1; }
+            if (blankByShift || si < r.length) inputPasteCols.add(h.col);
+            let v = (blankByShift || r[si] == null) ? '' : String(r[si]).trim();
             if (/^#/.test(v)) v = '';                              // #DIV/0!, #VALUE!, dst. tidak dipakai
             if (h.col === inputDateCol) v = inputParseDate(v, dmy);
             el.value = v; el.placeholder = ''; el.classList.remove('inp-formula');
             if (v !== '') filled++;
         });
-        inputOriginal = {}; inputLoadedKey = '';
+        inputOriginal = {}; inputLoadedKey = ''; inputFromPaste = true;
         const d = document.getElementById('inputDate').value;
-        inputStatus(filled + ' kolom terisi dari tempelan.' + (d ? ' Tanggal terbaca: <b>' + thermalEsc(d) + '</b> — cek, lalu klik "Simpan ke sheet".' : ' <span class="text-warning">Tanggal tidak terbaca, isi manual.</span>') +
+        inputStatus(filled + ' kolom terisi dari tempelan' + (shift ? ' (kolom DM sumber tersembunyi → data digeser otomatis)' : '') + '.' + (d ? ' Tanggal terbaca: <b>' + thermalEsc(d) + '</b> — cek, lalu klik "Simpan ke sheet".' : ' <span class="text-warning">Tanggal tidak terbaca, isi manual.</span>') +
             (dataRows.length > 1 ? ' <span class="text-warning">(Tempelan berisi ' + dataRows.length + ' baris; hanya baris pertama yang dipakai.)</span>' : ''));
     }
     async function inputLoadRow(){
@@ -2348,7 +2454,7 @@
                 if (c.f) { el.value = ''; el.placeholder = c.v ? '= ' + c.v : '(rumus)'; inputOriginal[h.col] = ''; nf++; }
                 else { el.value = c.v; el.placeholder = ''; inputOriginal[h.col] = c.v; if (c.v !== '') n++; }
             });
-            inputLoadedKey = inputSheetName() + '|' + date;
+            inputLoadedKey = inputSheetName() + '|' + date; inputFromPaste = false;
             inputStatus('Baris ' + j.row + ' dimuat: ' + n + ' sel berisi, ' + nf + ' sel berumus (ditampilkan abu-abu, tidak ikut tersimpan kecuali Anda ketik sesuatu).');
         } catch (e) { inputStatus(thermalEsc(e.message), 'text-danger'); }
     }
@@ -2362,11 +2468,13 @@
             const v = document.querySelector('#inputGrid .inp-cell[data-col="' + h.col + '"]').value.trim();
             if (loaded) { const o = inputOriginal[h.col] || ''; if (v !== o) cells[h.col] = (v === '' ? null : v); }
             else if (v !== '') cells[h.col] = v;
+            else if (inputFromPaste && document.getElementById('inputClearBlank').checked && inputPasteCols.has(h.col)) cells[h.col] = null;   // tempelan kosong -> kosongkan sel
         });
         if (!Object.keys(cells).length) { inputStatus('Tidak ada isian yang perlu disimpan.', 'text-warning'); return; }
         const sheetYear = (inputSheetName().match(/(\d{4})/) || [])[1];
         const warn = (sheetYear && sheetYear !== date.slice(0, 4)) ? '\n\n⚠️ PERHATIAN: tahun tanggal (' + date.slice(0, 4) + ') berbeda dengan sheet tujuan (' + inputSheetName() + ').' : '';
-        if (!confirm('Simpan ' + Object.keys(cells).length + ' kolom ke sheet "' + inputSheetName() + '" untuk tanggal ' + date + '?\nJika tanggal itu sudah ada, barisnya diperbarui.' + warn)) return;
+        const nClear = Object.keys(cells).filter(k => cells[k] === null).length;
+        if (!confirm('Simpan ' + Object.keys(cells).length + ' kolom' + (nClear ? ' (' + nClear + ' di antaranya dikosongkan)' : '') + ' ke sheet "' + inputSheetName() + '" untuk tanggal ' + date + '?\nJika tanggal itu sudah ada, barisnya diperbarui.' + warn)) return;
         inputStatus('Menyimpan...');
         try {
             const r = await authPost({ action: 'inputSave', username: currentUser.username, token: currentUser.token, sheet: inputSheetName(), date, cells, skipFormula: document.getElementById('inputSkipFormula').checked });
@@ -2397,8 +2505,21 @@
     // ==================== SCREEN CAPTURE LAPORAN (tempel gambar -> Drive/GSheet -> slide export) ====================
     const CAP_MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
     let capDraft = [];
+    const CAPTURE_ROLES = ['engineer'];   // harus sama dengan CAPTURE_ROLES di Code.gs
+    function captureCanUse(){ return !!(currentUser && CAPTURE_ROLES.indexOf(currentUser.role) >= 0); }
     function capLongDate(d){ const p = d.split('-'); return (+p[2]) + ' ' + CAP_MONTHS[+p[1] - 1] + ' ' + p[0]; }
     function capStatus(html, cls){ const el = document.getElementById('capStatus'); if (el) { el.className = 'small mt-2 ' + (cls || 'text-secondary'); el.innerHTML = html; } }
+    // Unduh foto thermal/capture untuk tanggal yang sedang dilihat di latar belakang, supaya saat Export sudah siap (tersimpan di cache)
+    let prefetchTimer = null;
+    const prefetchedDates = new Set();
+    function schedulePrefetch(date){
+        if (!date || prefetchedDates.has(date)) return;
+        clearTimeout(prefetchTimer);
+        prefetchTimer = setTimeout(async () => {
+            prefetchedDates.add(date);
+            try { await Promise.all([thermalPrepareSlides(date), capturePrepareSlides(date)]); } catch (e) {}
+        }, 2500);
+    }
     function capSyncDate(d){ const el = document.getElementById('capDate'); if (el && !el.value) { el.value = d; capRefreshSaved(); } }
 
     function capBlobToJpeg(blob){
@@ -2488,12 +2609,17 @@
         try {
             const r = await authPost({ action: 'captureDelete', username: currentUser.username, token: currentUser.token, fileId });
             if (!r || !r.ok) throw new Error((r && r.message) || 'gagal menghapus');
+            imgCacheDelete(fileId);
             capRefreshSaved();
         } catch (e) { capStatus('<span class="text-danger">' + thermalEsc(e.message) + '</span>'); }
     }
     async function capFetchImage(id){
+        const cached = await imgCacheGet(id);
+        if (cached) return cached;
         const j = await inputApi({ action: 'captureImage', id });
-        return 'data:' + (j.mime || 'image/jpeg') + ';base64,' + j.data;
+        const data = 'data:' + (j.mime || 'image/jpeg') + ';base64,' + j.data;
+        imgCacheSet(id, data);
+        return data;
     }
     // Ambil capture yang tersimpan untuk tanggal export -> daftar slide
     async function capturePrepareSlides(selDate){
@@ -2508,7 +2634,7 @@
                 try { const data = await capFetchImage(r.fileId); const sz = await thermalImgSize(data); if (sz) imgs[r.fileId] = { data, w: sz.w, h: sz.h }; } catch (e) {}
             }
         };
-        await Promise.all([worker(), worker(), worker(), worker()]);
+        await Promise.all(Array.from({ length: 6 }, worker));
         const batches = [];
         const byBatch = {};
         rows.forEach(r => { if (!imgs[r.fileId]) return; if (!byBatch[r.batch]) { byBatch[r.batch] = { layout: r.layout, title: r.title, label: r.label, images: [] }; batches.push(byBatch[r.batch]); } byBatch[r.batch].images.push(imgs[r.fileId]); });
@@ -2587,6 +2713,7 @@
         document.getElementById('excelDateLabel').innerText = row.Date;
         fillLadleFromSheet(row.Date);
         capSyncDate(row.Date);
+        schedulePrefetch(row.Date);
 
         // ---- POWER ----
         document.getElementById('excPower').innerText = fmtNum(getVal(row, 'power'));
@@ -2624,6 +2751,11 @@
         document.getElementById('excTempBottom').innerText = fmtNum(getVal(row, 'tempBottom'), 0);
         document.getElementById('excTempFreeboard').innerText = fmtNum(getVal(row, 'tempFreeboard'), 0);
         document.getElementById('excTempSidewall').innerText = fmtNum(getVal(row, 'tempSidewall'), 0);
+        [['excTempBottomRange', 'tempBottomRange'], ['excTempFreeboardRange', 'tempFreeboardRange'], ['excTempSidewallRange', 'tempSidewallRange']].forEach(k => {
+            const r = parseTempRange(getRawExact(row, k[1]));
+            document.getElementById(k[0]).innerText = r ? fmtNum(r.lo.v, 1) + ' – ' + fmtNum(r.hi.v, 1) : '-';
+            document.getElementById(k[0] + 'Loc').innerText = r ? '°C  ' + r.lo.loc + ' – ' + r.hi.loc : '°C';
+        });
 
         // ---- SKIMMING RECORD ----
         const northSkim = getVal(row, 'northSkim'), southSkim = getVal(row, 'southSkim');
@@ -2805,6 +2937,67 @@
     };
     Chart.register(pinnedCalloutPlugin);
 
+    // ==== Callout ANGKA saja: label angka di titik data, posisinya dicari otomatis agar tidak menumpuk ====
+    let numCalloutActive = false;
+    function fmtCalloutNum(v){
+        const a = Math.abs(v);
+        if (a >= 1000) return Math.round(v).toLocaleString('en-US');
+        if (a >= 100) return String(Math.round(v));
+        if (a >= 10) return v.toFixed(1);
+        return v.toFixed(2);
+    }
+    const numCalloutPlugin = {
+        id: 'numCalloutPlugin',
+        afterDatasetsDraw: function(chart){
+            if (!numCalloutActive || !chart.config._pinKey || chart.config.type === 'doughnut') return;
+            const area = chart.chartArea;
+            if (!area) return;
+            const ctx = chart.ctx, cs = getComputedStyle(document.body);
+            const panelColor = cs.getPropertyValue('--panel').trim() || '#ffffff', textColor = cs.getPropertyValue('--text').trim() || '#222';
+            ctx.save();
+            ctx.font = 'bold 10px sans-serif';
+            ctx.textBaseline = 'middle'; ctx.textAlign = 'center';
+            const cands = [];
+            chart.data.datasets.forEach((ds, di) => {
+                if (!chart.isDatasetVisible(di)) return;
+                const isLine = (ds.type || chart.config.type) === 'line';
+                if (isLine && (ds.borderDash || ds.pointRadius === 0)) return;          // garis target/range tidak diberi angka
+                const pts = chart.getDatasetMeta(di).data;
+                const step = Math.max(1, Math.ceil(38 / (area.width / Math.max(1, pts.length))));   // jarang-kan bila titik terlalu rapat
+                for (let i = pts.length - 1; i >= 0; i -= step) {                      // mulai dari titik terbaru
+                    const v = ds.data[i];
+                    if (v === null || v === undefined || isNaN(v) || !pts[i]) continue;
+                    const pp = pts[i].getProps(['x', 'y'], true);
+                    cands.push({ di, v: +v, x: pp.x, y: pp.y, order: pts.length - 1 - i, bar: !isLine, color: (typeof ds.borderColor === 'string' && ds.borderColor) || textColor });
+                }
+            });
+            cands.sort((a, b) => a.order - b.order || a.di - b.di);
+            const placed = [];
+            const hit = (a, b) => a.x < b.x + b.w + 2 && a.x + a.w + 2 > b.x && a.y < b.y + b.h + 2 && a.y + a.h + 2 > b.y;
+            cands.forEach(cd => {
+                const txt = fmtCalloutNum(cd.v), w = ctx.measureText(txt).width + 8, h = 14;
+                const opts = cd.bar ? [[-w / 2, -h - 3]] : [[-w / 2, -h - 6], [-w / 2, 6], [8, -h / 2], [-w - 8, -h / 2], [-w / 2, -h - 22], [-w / 2, 22], [10, -h - 8], [-w - 10, -h - 8], [10, 8], [-w - 10, 8]];
+                for (const o of opts) {
+                    const box = { x: cd.x + o[0], y: cd.y + o[1], w, h };
+                    if (box.x < area.left || box.x + w > area.right || box.y < area.top - 2 || box.y + h > area.bottom + 2) continue;
+                    if (placed.some(b => hit(box, b))) continue;
+                    placed.push(box);
+                    ctx.globalAlpha = 0.9; ctx.fillStyle = panelColor; ctx.fillRect(box.x, box.y, w, h);
+                    ctx.globalAlpha = 1; ctx.strokeStyle = cd.color; ctx.lineWidth = 1; ctx.strokeRect(box.x + 0.5, box.y + 0.5, w - 1, h - 1);
+                    ctx.fillStyle = cd.color; ctx.fillText(txt, box.x + w / 2, box.y + h / 2 + 0.5);
+                    return;
+                }
+            });
+            ctx.restore();
+        }
+    };
+    Chart.register(numCalloutPlugin);
+    function toggleNumberCallout(){
+        numCalloutActive = !numCalloutActive;
+        document.getElementById('btnNumCallout').classList.toggle('pin-active', numCalloutActive);
+        refreshAllExcelChartsDraw();
+    }
+
     // Dipanggil setelah tiap chart Dashboard Produksi dibuat, supaya klik titik data
     // di grafik itu bisa di-pin (hanya aktif kalau "Mode Pin Data" sedang ON).
     function attachPinClickHandler(chart, key){
@@ -2930,16 +3123,28 @@
         attachPinClickHandler(excChartMaterial, 'excChartMaterial');
 
         destroyIfExists(excChartTemp);
+        // Bottom (sekitar 760 °C) dipindah ke sumbu kanan sendiri supaya perubahannya terlihat; Freeboard & Sidewall di sumbu kiri.
+        const tempDs = [
+            { label: 'Bottom (sumbu kanan)', data: mtdRows.map(r => val(r, 'tempBottom')), borderColor: c.accent, yAxisID: 'y1', tension: .3, spanGaps: true, pointRadius: 1.5 },
+            { label: 'Freeboard', data: mtdRows.map(r => val(r, 'tempFreeboard')), borderColor: c.accent2, yAxisID: 'y', tension: .3, spanGaps: true, pointRadius: 1.5 },
+            { label: 'Sidewall', data: mtdRows.map(r => val(r, 'tempSidewall')), borderColor: c.accent3, yAxisID: 'y', tension: .3, spanGaps: true, pointRadius: 1.5 }
+        ];
+        if (document.getElementById('excTempShowRange').checked) {
+            [['Bottom', 'tempBottomRange', c.accent, 'y1'], ['Freeboard', 'tempFreeboardRange', c.accent2, 'y'], ['Sidewall', 'tempSidewallRange', c.accent3, 'y']].forEach(z => {
+                [['lo', 'Lowest'], ['hi', 'Highest']].forEach(w => tempDs.push({
+                    label: z[0] + ' ' + w[1], borderColor: z[2], yAxisID: z[3], borderDash: [5, 4], borderWidth: 1.2, tension: .25, spanGaps: true, pointRadius: 0,
+                    data: mtdRows.map(r => { const t = parseTempRange(getRawExact(r, z[1])); return t ? t[w[0]].v : null; })
+                }));
+            });
+        }
+        const tempOpts = excDualAxisOpts(c);
+        tempOpts.scales.y.ticks.color = c.text;          // sumbu kiri dipakai 2 garis -> warna netral
+        tempOpts.scales.y1.ticks.color = c.accent;       // sumbu kanan = warna garis Bottom
+        tempOpts.scales.y1.grace = '8%';
         excChartTemp = new Chart(document.getElementById('excChartTemp'), {
             type: 'line',
-            data: {
-                labels, datasets: [
-                    { label: 'Bottom', data: mtdRows.map(r => val(r, 'tempBottom')), borderColor: c.accent, tension: .3, spanGaps: true, pointRadius: 1.5 },
-                    { label: 'Freeboard', data: mtdRows.map(r => val(r, 'tempFreeboard')), borderColor: c.accent2, tension: .3, spanGaps: true, pointRadius: 1.5 },
-                    { label: 'Sidewall', data: mtdRows.map(r => val(r, 'tempSidewall')), borderColor: c.accent3, tension: .3, spanGaps: true, pointRadius: 1.5 }
-                ]
-            },
-            options: excChartOpts(c, true)
+            data: { labels, datasets: tempDs },
+            options: tempOpts
         });
         attachPinClickHandler(excChartTemp, 'excChartTemp');
 
