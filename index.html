@@ -858,6 +858,25 @@
         return res.json();
     }
 
+    // Koneksi ke Apps Script kadang terputus ("Failed to fetch"). Untuk aksi yang aman diulang (upload thermal/capture, simpan input)
+    // dicoba ulang otomatis sampai 4x dengan jeda bertambah. Balasan {ok:false} dari server (mis. tidak berizin) tidak diulang.
+    let uploadBusy = 0;
+    async function authPostRetry(payload, onRetry, tries){
+        tries = tries || 4;
+        let lastErr;
+        for (let k = 1; k <= tries; k++) {
+            try { return await authPost(payload); }
+            catch (e) {
+                lastErr = e;
+                if (k < tries) { if (onRetry) onRetry(k + 1, tries); await new Promise(r => setTimeout(r, 1500 * k)); }
+            }
+        }
+        const msg = (lastErr && lastErr.message) || 'gagal';
+        throw new Error(/failed to fetch|networkerror|load failed/i.test(msg)
+            ? 'koneksi ke server terputus (sudah dicoba ' + tries + 'x) — cek jaringan lalu klik Simpan lagi, foto yang sudah tersimpan tidak dikirim ulang'
+            : msg);
+    }
+
     async function doRegister(){
         const username = document.getElementById('regUsername').value.trim();
         const password = document.getElementById('regPassword').value;
@@ -1859,14 +1878,14 @@
         const k = Math.max(...pos.map(p => p.l.im.naturalWidth / p.cx));
         const W = Math.ceil(Math.max(...pos.map(p => p.x - minX + p.cx)) * k);
         const H = Math.ceil(Math.max(...pos.map(p => p.y - minY + p.cy)) * k);
-        const s = W > 1100 ? 1100 / W : 1;
+        const s = W > 900 ? 900 / W : 1;      // 900 px sudah cukup tajam untuk slide; file lebih kecil = unggah lebih stabil
         const c = document.createElement('canvas');
         c.width = Math.round(W * s); c.height = Math.round(H * s);
         const g = c.getContext('2d');
         g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height);
         pos.forEach(p => g.drawImage(p.l.im, (p.x - minX) * k * s, (p.y - minY) * k * s, p.cx * k * s, p.cy * k * s));
         loaded.forEach(l => URL.revokeObjectURL(l.u));
-        return c.toDataURL('image/jpeg', 0.88);
+        return c.toDataURL('image/jpeg', 0.85);
     }
     async function thermalHandleFiles(input){
         const files = Array.from(input.files || []);
@@ -1905,9 +1924,9 @@
             '<option value="' + c.key + l + '">' + c.key + l + ' — ' + c.label + ' (' + THERMAL_LEVELS[l] + ')</option>')), [])).join('');
         let h = '<div class="table-responsive"><table class="table table-sm align-middle"><thead><tr><th></th><th>Foto</th><th>File asli</th><th>Tanggal</th><th>Kode</th></tr></thead><tbody>';
         thermalDraft.forEach((r, i) => {
-            h += '<tr><td><input type="checkbox" class="thermal-chk" data-i="' + i + '" ' + (r.error ? 'disabled' : 'checked') + '></td>' +
+            h += '<tr><td><input type="checkbox" class="thermal-chk" data-i="' + i + '" ' + (r.error || r.saved ? 'disabled' : 'checked') + (r.saved ? '' : '') + '></td>' +
                 '<td>' + (r.dataUrl ? '<img src="' + r.dataUrl + '" style="height:64px;border-radius:4px;">' : '<span class="text-danger small">' + thermalEsc(r.error) + '</span>') + '</td>' +
-                '<td class="small">' + thermalEsc(r.fileName || '-') + '<br><span class="text-secondary">' + thermalEsc(r.rawDate) + '</span></td>' +
+                '<td class="small">' + thermalEsc(r.fileName || '-') + (r.saved ? ' <span class="text-success">✓ tersimpan</span>' : '') + '<br><span class="text-secondary">' + thermalEsc(r.rawDate) + '</span></td>' +
                 '<td><input type="date" class="form-control form-control-sm thermal-date" data-i="' + i + '" value="' + thermalEsc(r.date) + '" style="width:150px"></td>' +
                 '<td><select class="form-select form-select-sm thermal-code" data-i="' + i + '" style="width:260px">' + opts + '</select></td></tr>';
         });
@@ -1923,7 +1942,7 @@
             const i = +chk.dataset.i, r = thermalDraft[i];
             const date = box.querySelector('.thermal-date[data-i="' + i + '"]').value;
             const code = box.querySelector('.thermal-code[data-i="' + i + '"]').value;
-            if (r.dataUrl && date && code) jobs.push({ r, date, code });
+            if (r.dataUrl && date && code && !r.saved) jobs.push({ r, date, code });
         });
         if (!jobs.length) { alert('Belum ada foto yang siap disimpan — pastikan tanggal & kode sudah terisi dan kotak centang aktif.'); return; }
         const seen = {};
@@ -1931,14 +1950,19 @@
         const dup = Object.keys(seen).filter(k => seen[k] > 1);
         if (dup.length && !confirm('Ada tanggal+kode yang dobel (' + dup.join(', ') + '). Foto yang terakhir akan menimpa yang sebelumnya. Lanjutkan?')) return;
         let ok = 0;
+        uploadBusy++;
+        try {
         for (const j of jobs) {
             st.textContent = 'Menyimpan ' + (ok + 1) + ' / ' + jobs.length + ' (' + j.date + ' ' + j.code + ')...';
             try {
-                const r = await authPost({ action: 'thermalUpload', username: currentUser.username, token: currentUser.token, date: j.date, code: j.code, fileName: j.r.fileName || '', mime: 'image/jpeg', data: j.r.dataUrl.split(',')[1] });
+                const r = await authPostRetry({ action: 'thermalUpload', username: currentUser.username, token: currentUser.token, date: j.date, code: j.code, fileName: j.r.fileName || '', mime: 'image/jpeg', data: j.r.dataUrl.split(',')[1] },
+                    (n, t) => { st.textContent = 'Koneksi terputus, mencoba ulang ' + n + '/' + t + ' (' + j.date + ' ' + j.code + ')...'; });
                 if (!r || !r.ok) throw new Error((r && r.message) || 'backend menolak (pastikan Code.gs sudah diperbarui)');
+                j.r.saved = true;
                 ok++;
-            } catch (e) { st.innerHTML = '<span class="text-danger">Gagal menyimpan ' + thermalEsc(j.date + ' ' + j.code) + ': ' + thermalEsc(e.message) + ' (tersimpan ' + ok + ' dari ' + jobs.length + ')</span>'; return; }
+            } catch (e) { thermalRenderDraft(); st.innerHTML = '<span class="text-danger">Gagal menyimpan ' + thermalEsc(j.date + ' ' + j.code) + ': ' + thermalEsc(e.message) + ' (tersimpan ' + ok + ' dari ' + jobs.length + ')</span>'; return; }
         }
+        } finally { uploadBusy--; }
         thermalDraft = [];
         thermalRenderDraft();
         st.textContent = ok + ' foto tersimpan ke GSheet/Drive.';
@@ -2477,12 +2501,14 @@
         if (!confirm('Simpan ' + Object.keys(cells).length + ' kolom' + (nClear ? ' (' + nClear + ' di antaranya dikosongkan)' : '') + ' ke sheet "' + inputSheetName() + '" untuk tanggal ' + date + '?\nJika tanggal itu sudah ada, barisnya diperbarui.' + warn)) return;
         inputStatus('Menyimpan...');
         try {
-            const r = await authPost({ action: 'inputSave', username: currentUser.username, token: currentUser.token, sheet: inputSheetName(), date, cells, skipFormula: document.getElementById('inputSkipFormula').checked });
+            uploadBusy++;
+            const r = await authPostRetry({ action: 'inputSave', username: currentUser.username, token: currentUser.token, sheet: inputSheetName(), date, cells, skipFormula: document.getElementById('inputSkipFormula').checked }, (n, t) => inputStatus('Koneksi terputus, mencoba ulang ' + n + '/' + t + '...'));
             if (!r || !r.ok) throw new Error((r && r.message) || 'Backend menolak (pastikan Code.gs sudah diperbarui).');
             inputStatus((r.mode === 'update' ? 'Baris ' + r.row + ' diperbarui' : 'Baris baru ditambahkan di baris ' + r.row) + ': ' + r.written + ' sel ditulis' + (r.skippedFormula ? ', ' + r.skippedFormula + ' sel berumus dilewati' : '') + '.', 'text-success');
             inputLoadedKey = '';
             loadProduksiData(false);
         } catch (e) { inputStatus(thermalEsc(e.message), 'text-danger'); }
+        finally { uploadBusy = Math.max(0, uploadBusy - 1); }
     }
 
     // ==================== DAFTAR SHEET TAHUNAN (dinamis dari GSheet) ====================
@@ -2505,6 +2531,7 @@
     // ==================== SCREEN CAPTURE LAPORAN (tempel gambar -> Drive/GSheet -> slide export) ====================
     const CAP_MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
     let capDraft = [];
+    let capBatchId = '';                 // satu batch per sekali simpan; dipertahankan saat mengulang supaya tidak dobel
     const CAPTURE_ROLES = ['engineer'];   // harus sama dengan CAPTURE_ROLES di Code.gs
     function captureCanUse(){ return !!(currentUser && CAPTURE_ROLES.indexOf(currentUser.role) >= 0); }
     function capLongDate(d){ const p = d.split('-'); return (+p[2]) + ' ' + CAP_MONTHS[+p[1] - 1] + ' ' + p[0]; }
@@ -2516,6 +2543,7 @@
         if (!date || prefetchedDates.has(date)) return;
         clearTimeout(prefetchTimer);
         prefetchTimer = setTimeout(async () => {
+            if (uploadBusy > 0) { schedulePrefetch(date); return; }   // tunggu upload selesai
             prefetchedDates.add(date);
             try { await Promise.all([thermalPrepareSlides(date), capturePrepareSlides(date)]); } catch (e) {}
         }, 2500);
@@ -2557,7 +2585,7 @@
     function capRemove(i){ capDraft.splice(i, 1); capRenderDraft(); }
     function capRenderDraft(){
         const box = document.getElementById('capDraftBox');
-        box.innerHTML = capDraft.map((d, i) => '<div class="cap-thumb"><img src="' + d.dataUrl + '"><button type="button" onclick="capRemove(' + i + ')" title="Hapus">✕</button><span>' + (i + 1) + '</span></div>').join('');
+        box.innerHTML = capDraft.map((d, i) => '<div class="cap-thumb"><img src="' + d.dataUrl + '"><button type="button" onclick="capRemove(' + i + ')" title="Hapus">✕</button><span>' + (i + 1) + (d.saved ? ' ✓ tersimpan' : '') + '</span></div>').join('');
         capStatus(capDraft.length ? capDraft.length + ' gambar siap disimpan.' : 'Klik kotak di atas lalu tekan Ctrl+V untuk menempel screenshot (boleh berkali-kali), atau seret / pilih file gambar.');
     }
     async function capSave(){
@@ -2567,17 +2595,24 @@
         const layout = document.getElementById('capLayout').value;
         const title = document.getElementById('capTitle').value.trim();
         const label = document.getElementById('capLabel').value.trim() || (capLongDate(date) + ' (24 h)');
-        const batch = 'b' + Date.now().toString(36);
+        if (!capBatchId) capBatchId = 'b' + Date.now().toString(36);
+        const batch = capBatchId;
         let ok = 0;
+        uploadBusy++;
+        try {
         for (let i = 0; i < capDraft.length; i++) {
+            if (capDraft[i].saved) { ok++; continue; }
             capStatus('Menyimpan ' + (i + 1) + ' / ' + capDraft.length + '...');
             try {
-                const r = await authPost({ action: 'captureUpload', username: currentUser.username, token: currentUser.token, date, batch, layout, title, label, order: i + 1, mime: 'image/jpeg', data: capDraft[i].dataUrl.split(',')[1] });
+                const r = await authPostRetry({ action: 'captureUpload', username: currentUser.username, token: currentUser.token, date, batch, layout, title, label, order: i + 1, mime: 'image/jpeg', data: capDraft[i].dataUrl.split(',')[1] },
+                    (n, t) => capStatus('Koneksi terputus, mencoba ulang ' + n + '/' + t + ' (gambar ' + (i + 1) + ')...'));
                 if (!r || !r.ok) throw new Error((r && r.message) || 'backend menolak (pastikan Code.gs sudah diperbarui)');
+                capDraft[i].saved = true;
                 ok++;
             } catch (e) { capStatus('<span class="text-danger">Gagal pada gambar ' + (i + 1) + ': ' + thermalEsc(e.message) + ' (tersimpan ' + ok + ' dari ' + capDraft.length + ')</span>'); capRefreshSaved(); return; }
         }
-        capDraft = [];
+        } finally { uploadBusy--; }
+        capDraft = []; capBatchId = '';
         capRenderDraft();
         capStatus(ok + ' gambar tersimpan untuk ' + thermalEsc(date) + '. Akan muncul di slide export tanggal tersebut.', 'text-success');
         capRefreshSaved();
