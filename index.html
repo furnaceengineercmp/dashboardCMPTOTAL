@@ -1525,6 +1525,7 @@
         if (btn) { btn.disabled = true; btn.innerText = '⏳ Menyiapkan PDF...'; }
         try {
             const panels = Array.from(document.querySelectorAll('#viewExcel .excel-panel:not(.no-export)'));
+            finishChartAnimations();
             const { jsPDF } = window.jspdf;
             const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
             const pageW = pdf.internal.pageSize.getWidth();
@@ -1655,6 +1656,7 @@
         btn.disabled = true; btn.innerText = '⏳ Menyiapkan PPT...';
         try {
             const panels = Array.from(document.querySelectorAll('#viewExcel .excel-panel:not(.no-export)'));
+            finishChartAnimations();
             const pptx = new PptxGenJS();
             pptx.defineLayout({ name: 'WIDE', width: 13.33, height: 7.5 });
             pptx.layout = 'WIDE';
@@ -3027,6 +3029,117 @@
         }
     };
     Chart.register(numCalloutPlugin);
+
+    // ==== Tampilan grafik lebih hidup: bayangan, gradasi warna, garis bidik saat hover, tooltip & animasi ====
+    Chart.defaults.animation = { duration: 900, easing: 'easeOutQuart' };
+    Chart.defaults.interaction = { mode: 'index', intersect: false };
+    Chart.defaults.elements.point.hoverRadius = 7;
+    Chart.defaults.elements.point.hitRadius = 14;
+    Chart.defaults.elements.line.borderCapStyle = 'round';
+    Chart.defaults.elements.line.borderJoinStyle = 'round';
+    Object.assign(Chart.defaults.plugins.tooltip, {
+        backgroundColor: 'rgba(20,24,33,0.92)', titleColor: '#ffffff', bodyColor: '#e8ecf4',
+        borderColor: 'rgba(255,255,255,0.18)', borderWidth: 1, cornerRadius: 10, padding: 10, boxPadding: 4, usePointStyle: true
+    });
+    function cssRgb(v){
+        try {
+            const c = document.createElement('canvas').getContext('2d');
+            c.fillStyle = '#000000'; c.fillStyle = String(v);
+            const s = c.fillStyle;
+            let m = s.match(/^#([0-9a-f]{6})$/i);
+            if (m) { const n = parseInt(m[1], 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; }
+            m = s.match(/rgba?\(([^)]+)\)/);
+            if (m) { const q = m[1].split(',').map(x => parseFloat(x)); return [q[0], q[1], q[2]]; }
+        } catch (e) {}
+        return null;
+    }
+    const rgbaStr = (rgb, a) => 'rgba(' + rgb[0] + ',' + rgb[1] + ',' + rgb[2] + ',' + a + ')';
+    const lightenRgb = (rgb, t) => rgb.map(x => Math.round(x + (255 - x) * t));
+    const isDashChart = chart => !!(chart.canvas && chart.canvas.closest && chart.canvas.closest('#viewExcel')) && chart.config.type !== 'doughnut';
+    const fancyChartPlugin = {
+        id: 'fancyChartPlugin',
+        // gradasi di bawah garis & pada batang (dipasang saat update, setelah ukuran area grafik diketahui)
+        beforeDatasetsUpdate: function(chart){
+            if (!isDashChart(chart) || !chart.chartArea) return;
+            const area = chart.chartArea, ctx = chart.ctx;
+            const isMainLine = ds => (ds.type || chart.config.type) === 'line' && !ds.borderDash && ds.pointRadius !== 0 && typeof ds.borderColor === 'string';
+            const singleLine = chart.data.datasets.filter(isMainLine).length === 1;   // gradasi isian hanya bila 1 garis (multi-garis jadi keruh)
+            chart.data.datasets.forEach(ds => {
+                const t = ds.type || chart.config.type;
+                if (t === 'line') {
+                    if (!isMainLine(ds)) return;
+                    const rgb = cssRgb(ds.borderColor);
+                    if (!rgb) return;
+                    if (singleLine) {
+                        const g = ctx.createLinearGradient(0, area.top, 0, area.bottom);
+                        g.addColorStop(0, rgbaStr(rgb, 0.32)); g.addColorStop(1, rgbaStr(rgb, 0.02));
+                        ds.backgroundColor = g; ds.fill = 'origin';
+                    } else { ds.fill = false; }
+                    ds._fancyShadow = !singleLine;                 // bayangan hanya untuk garis tanpa isian
+                    ds.pointBackgroundColor = ds.borderColor; ds.pointBorderColor = '#ffffff'; ds.pointBorderWidth = 1.2;
+                } else if (t === 'bar') {
+                    if (ds._fbase === undefined) ds._fbase = ds.backgroundColor;
+                    const rgb = cssRgb(ds._fbase);
+                    if (!rgb) return;
+                    const g = ctx.createLinearGradient(0, area.top, 0, area.bottom);
+                    g.addColorStop(0, rgbaStr(rgb, 0.95)); g.addColorStop(1, rgbaStr(lightenRgb(rgb, 0.35), 0.45));
+                    ds.backgroundColor = g; ds.borderRadius = 6; ds.borderSkipped = false;
+                }
+            });
+        },
+        // bayangan lembut di bawah garis/batang -> kesan timbul
+        beforeDatasetDraw: function(chart, args){
+            if (!isDashChart(chart)) return;
+            const ds = chart.data.datasets[args.index], t = ds.type || chart.config.type;
+            chart.ctx.save();
+            const src = t === 'bar' ? ds._fbase : ds.borderColor;
+            const noShadow = t === 'line' && (ds.borderDash || ds.pointRadius === 0 || !ds._fancyShadow);
+            const rgb = noShadow ? null : cssRgb(src);
+            if (rgb) { chart.ctx.shadowColor = rgbaStr(rgb, t === 'bar' ? 0.35 : 0.45); chart.ctx.shadowBlur = t === 'bar' ? 10 : 8; chart.ctx.shadowOffsetY = t === 'bar' ? 4 : 3; }
+        },
+        afterDatasetDraw: function(chart){ if (isDashChart(chart)) chart.ctx.restore(); },
+        // garis bidik vertikal mengikuti kursor
+        afterDatasetsDraw: function(chart){
+            if (!isDashChart(chart) || !chart.tooltip || !chart.tooltip.getActiveElements) return;
+            const act = chart.tooltip.getActiveElements();
+            if (!act.length || !chart.chartArea) return;
+            const x = act[0].element.x, a = chart.chartArea, ctx = chart.ctx;
+            ctx.save();
+            const g = ctx.createLinearGradient(0, a.top, 0, a.bottom);
+            g.addColorStop(0, 'rgba(120,120,120,0)'); g.addColorStop(0.5, 'rgba(120,120,120,0.6)'); g.addColorStop(1, 'rgba(120,120,120,0)');
+            ctx.strokeStyle = g; ctx.lineWidth = 1.5; ctx.setLineDash([5, 4]);
+            ctx.beginPath(); ctx.moveTo(x, a.top); ctx.lineTo(x, a.bottom); ctx.stroke();
+            ctx.restore();
+        }
+    };
+    Chart.register(fancyChartPlugin);
+    // Donut: bayangan + label persen di tiap potongan
+    const donutFancyPlugin = {
+        id: 'donutFancy',
+        beforeDatasetDraw: function(chart){ chart.ctx.save(); chart.ctx.shadowColor = 'rgba(0,0,0,0.30)'; chart.ctx.shadowBlur = 14; chart.ctx.shadowOffsetY = 6; },
+        afterDatasetDraw: function(chart){ chart.ctx.restore(); },
+        afterDatasetsDraw: function(chart){
+            const ds = chart.data.datasets[0];
+            if (!ds || !ds._hasData) return;
+            const total = ds.data.reduce((a, b) => a + (+b || 0), 0);
+            if (total <= 0) return;
+            const ctx = chart.ctx;
+            ctx.save();
+            ctx.font = 'bold 13px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            chart.getDatasetMeta(0).data.forEach((el, i) => {
+                const pr = el.getProps(['x', 'y', 'startAngle', 'endAngle', 'innerRadius', 'outerRadius'], true);
+                if (pr.endAngle - pr.startAngle < 0.5) return;
+                const ang = (pr.startAngle + pr.endAngle) / 2, r = (pr.innerRadius + pr.outerRadius) / 2;
+                ctx.shadowColor = 'rgba(0,0,0,0.45)'; ctx.shadowBlur = 4; ctx.fillStyle = '#ffffff';
+                ctx.fillText(Math.round(ds.data[i] / total * 100) + '%', pr.x + Math.cos(ang) * r, pr.y + Math.sin(ang) * r);
+            });
+            ctx.restore();
+        }
+    };
+    // Hentikan animasi & gambar ulang tuntas sebelum grafik difoto untuk export
+    function finishChartAnimations(){
+        Object.values(Chart.instances || {}).forEach(c => { try { c.stop(); c.update('none'); } catch (e) {} });
+    }
     function toggleNumberCallout(){
         numCalloutActive = !numCalloutActive;
         document.getElementById('btnNumCallout').classList.toggle('pin-active', numCalloutActive);
@@ -3117,14 +3230,24 @@
         destroyIfExists(existingRef);
         const hasData = (north !== null && north !== undefined) || (south !== null && south !== undefined);
         const data = hasData ? [north || 0, south || 0] : [1, 0];
+        const baseCols = [c.accent, c.accent2];
+        const gradFor = (ctx) => {                      // gradasi diagonal per potongan
+            const col = baseCols[ctx.dataIndex] || c.accent, a = ctx.chart.chartArea, rgb = cssRgb(col);
+            if (!a || !rgb) return col;
+            const g = ctx.chart.ctx.createLinearGradient(a.left, a.top, a.right, a.bottom);
+            g.addColorStop(0, rgbaStr(lightenRgb(rgb, 0.38), 1)); g.addColorStop(1, rgbaStr(rgb, 1));
+            return g;
+        };
         const chart = new Chart(document.getElementById(canvasId), {
             type: 'doughnut',
-            data: { labels: ['North', 'South'], datasets: [{ data, backgroundColor: [c.accent, c.accent2], borderWidth: 0 }] },
+            data: { labels: ['North', 'South'], datasets: [{ data, backgroundColor: gradFor, borderWidth: 0, borderRadius: 14, spacing: 3, hoverOffset: 12, _hasData: hasData }] },
             options: {
-                responsive: true, maintainAspectRatio: false, cutout: '68%',
+                responsive: true, maintainAspectRatio: false, cutout: '54%',
+                layout: { padding: 12 },
+                animation: { animateRotate: true, animateScale: true, duration: 1100, easing: 'easeOutQuart' },
                 plugins: { legend: { display: false }, tooltip: { enabled: hasData } }
             },
-            plugins: [centerTextPlugin]
+            plugins: [centerTextPlugin, donutFancyPlugin]
         });
         return chart;
     }
