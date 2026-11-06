@@ -736,6 +736,33 @@
     </div>
   </div>
 
+  <div class="row">
+    <div class="col-lg-12">
+      <div class="excel-panel no-export" id="trafoPanel">
+        <div class="excel-panel-title">⚡ FCE Monitoring Trafo, Cable 33 KV — Import Laporan (.docx)</div>
+        <div class="row g-2 align-items-end mb-2">
+          <div class="col-auto">
+            <label class="form-label small text-secondary mb-1 d-block">File laporan trafo (.docx)</label>
+            <input type="file" id="trafoFileInput" accept=".docx" multiple class="form-control form-control-sm" onchange="trafoHandleFiles(this)">
+          </div>
+          <div class="col-auto">
+            <label class="form-label small text-secondary mb-1 d-block">Format tanggal di dokumen</label>
+            <select id="trafoDateOrder" class="form-select form-select-sm">
+              <option value="mdy">Bulan/Hari/Tahun (US)</option>
+              <option value="dmy">Hari/Bulan/Tahun</option>
+            </select>
+          </div>
+          <div class="col-auto"><button class="btn btn-sm btn-info" onclick="trafoSaveDraft()">💾 Simpan ke GSheet</button></div>
+        </div>
+        <div class="small text-secondary mb-2" id="trafoStatus">Pilih file .docx — judul foto (mis. TR1 INPUT DS 33 KV), tanggal, foto thermal &amp; visible light dibaca otomatis.</div>
+        <div id="trafoDraftBox"></div>
+        <div class="lbl mt-3 mb-1">Foto tersimpan di GSheet (10 tanggal terakhir)</div>
+        <div class="small" id="trafoSavedBox">-</div>
+        <div class="excel-note">Export PPT/PDF: 1 slide per trafo (1–3), memakai 3 tanggal terakhir ≤ tanggal yang dipilih. Slide muncul setelah slide thermal.</div>
+      </div>
+    </div>
+  </div>
+
 </div><!-- /viewExcel -->
 
 <div id="viewInput" style="display:none;">
@@ -755,7 +782,7 @@
     </div>
     <div class="row g-2 align-items-end">
       <div class="col-lg-8">
-        <label class="form-label small text-secondary mb-1">Tempel 1 baris data (copy kolom A sampai akhir dari Excel/GSheet)</label>
+        <label class="form-label small text-secondary mb-1">Tempel <b>baris header + 1 baris data</b> dari Excel/GSheet (kolom yang hidden tidak masalah)</label>
         <textarea id="inputPaste" class="form-control form-control-sm" rows="3" placeholder="Copy 1 baris data lalu paste di sini — form di bawah terisi otomatis" onpaste="setTimeout(inputFillFromPaste, 50)" onchange="inputFillFromPaste()"></textarea>
       </div>
       <div class="col-lg-4">
@@ -1312,6 +1339,7 @@
             const sheetParam = sheetSel ? sheetSel.value : 'Data 2026';
             rawData = await fetchSheetData(sheetParam);
             await loadLadleData(sheetParam);
+            trafoRefreshSaved();
             thermalRefreshSaved();
             populateExcelDateSelect();
             if (document.getElementById('viewExcel').style.display !== 'none') renderExcelDashboard();
@@ -1536,7 +1564,7 @@
             const dateLabel = document.getElementById('excelDateLabel').innerText || 'dashboard';
 
             pdfAddCoverPage(pdf, pageW, pageH, dateLabel);
-            const thermalP = thermalPrepareSlides(dateLabel), capP = capturePrepareSlides(dateLabel);   // unduh paralel dengan proses gambar panel
+            const thermalP = thermalPrepareSlides(dateLabel), capP = capturePrepareSlides(dateLabel); const trafoP = trafoPrepareSlides(dateLabel);   // unduh paralel dengan proses gambar panel
 
             const margin = 4, gap = 3, topSafe = 12, bottomSafe = 6;
             const usableW = pageW - margin * 2;
@@ -1568,6 +1596,7 @@
             if (btn) btn.innerText = '⏳ Menunggu foto thermal/capture...';
             const thermalSlides = await thermalP;
             thermalSlides.forEach(s => thermalRenderPdf(pdf, thermalBuildItems(s, pageW, pageH, 0.877), pageW, pageH));
+            (await trafoP).forEach(s => thermalRenderPdf(pdf, trafoBuildItems(s, pageW, pageH, 0.877), pageW, pageH));
             const capSlides = await capP;
             capSlides.forEach(s => thermalRenderPdf(pdf, captureBuildItems(s, pageW, pageH, 0.877), pageW, pageH));
 
@@ -1665,7 +1694,7 @@
             pptx.layout = 'WIDE';
             const dateLabel = document.getElementById('excelDateLabel').innerText || 'dashboard';
             addCoverSlide(pptx, dateLabel);
-            const thermalP = thermalPrepareSlides(dateLabel), capP = capturePrepareSlides(dateLabel);   // unduh paralel dengan proses gambar panel
+            const thermalP = thermalPrepareSlides(dateLabel), capP = capturePrepareSlides(dateLabel); const trafoP = trafoPrepareSlides(dateLabel);   // unduh paralel dengan proses gambar panel
             const deckMode = document.getElementById('exportStyleSelect').value === 'deck';
             if (deckMode) deckBuildSlides(13.33, 7.5, 1).forEach(items => thermalRenderPptx(pptx, items));
             for (const panel of (deckMode ? [] : panels)) {
@@ -1683,6 +1712,7 @@
             if (btn) btn.innerText = '⏳ Menunggu foto thermal/capture...';
             const thermalSlides = await thermalP;
             thermalSlides.forEach(s => thermalRenderPptx(pptx, thermalBuildItems(s, 13.33, 7.5, 1)));
+            (await trafoP).forEach(s => thermalRenderPptx(pptx, trafoBuildItems(s, 13.33, 7.5, 1)));
             const capSlides = await capP;
             capSlides.forEach(s => thermalRenderPptx(pptx, captureBuildItems(s, 13.33, 7.5, 1)));
             addThankYouSlide(pptx);
@@ -1860,7 +1890,7 @@
         });
     }
     // Gabungkan foto thermal + skala suhu (kalau terpisah di dokumen) jadi satu gambar JPEG
-    async function thermalCompose(zip, imgs){
+    async function thermalCompose(zip, imgs, minFrac){
         const loaded = [];
         for (const it of imgs) {
             const f = zip.file(it.path);
@@ -1870,7 +1900,7 @@
         if (!loaded.length) throw new Error('gambar tidak bisa dibaca (kemungkinan format EMF/WMF)');
         const area = l => l.im.naturalWidth * l.im.naturalHeight;
         const maxA = Math.max(...loaded.map(area));
-        const use = loaded.filter(l => area(l) >= maxA * 0.01);
+        const use = loaded.filter(l => area(l) >= maxA * (minFrac === undefined ? 0.01 : minFrac));
         const allAnch = use.length > 1 && use.every(l => l.it.anchored && l.it.offX != null && l.it.offY != null);
         let xAcc = 0;
         const pos = use.map(l => {
@@ -2340,6 +2370,239 @@
         return slides;
     }
 
+    // ==================== FCE MONITORING TRAFO (import .docx -> GSheet/Drive -> slide PPT/PDF) ====================
+    const TRAFO_POS_ORDER = ['INDS', 'OUTDS', 'INTR'];
+    const TRAFO_POS_LABEL = { INDS: 'INPUT DS 33KV', OUTDS: 'OUTPUT DS 33KV', INTR: 'INPUT TRANSFORMER 33KV' };
+    // Ubah nomor breaker di sini bila tiap trafo berbeda
+    const TRAFO_SLIDE_TITLE = {
+        1: 'FCE MONITORING TRAFO, CABLE 33 KV, BREAKER AH102',
+        2: 'FCE MONITORING TRAFO, CABLE 33 KV, BREAKER AH102',
+        3: 'FCE MONITORING TRAFO, CABLE 33 KV, BREAKER AH102'
+    };
+    const TRAFO_FOOTER = 'Temperature Parameter Trafo Cable <70°C';
+    let trafoDraft = [];
+
+    // "TR1 INPUT DS 33 KV" -> {trafo:1, pos:'INDS'}
+    function trafoParseTitle(text){
+        const m = String(text || '').match(/TR(?:AFO)?\s*-?\s*([123])\s+(INPUT|OUTPUT|IN|OUT)\s+(DS|TRAFO|TRANSFORMER|TRF)/i);
+        if (!m) return null;
+        const out = /^OUT/i.test(m[2]), ds = /^DS$/i.test(m[3]);
+        return { trafo: +m[1], pos: (!out && ds) ? 'INDS' : (out && ds) ? 'OUTDS' : (!out ? 'INTR' : '') };
+    }
+    // Tiap judul "TRx ..." memulai satu record; semua gambar & teks sampai judul berikutnya milik record itu
+    function trafoExtractRecords(docXml, rels, dmy){
+        const doc = new DOMParser().parseFromString(docXml, 'application/xml');
+        const body = doc.getElementsByTagName('w:body')[0];
+        const recs = []; let cur = null;
+        Array.from(body.children).forEach(el => {
+            const lines = thermalElementLines(el), imgs = thermalElementImages(el, rels);
+            let t = null;
+            lines.forEach(l => { const x = trafoParseTitle(l); if (x) t = x; });
+            if (t) { cur = { title: t, imgs: [], lines: [] }; recs.push(cur); }
+            if (!cur) return;
+            cur.imgs.push(...imgs); cur.lines.push(...lines);
+        });
+        return recs.filter(r => r.imgs.length).map(r => {
+            const meta = thermalReadMeta({ imgs: r.imgs, lines: r.lines }, dmy);
+            meta.trafo = r.title.trafo; meta.pos = r.title.pos;
+            return meta;
+        });
+    }
+    // Pisahkan: skala suhu (tinggi-sempit), foto thermal (pertama), foto visible light (kedua)
+    async function trafoComposeRecord(zip, imgs){
+        const loaded = [];
+        for (const it of imgs) {
+            const f = zip.file(it.path); if (!f) continue;
+            try { const blob = await f.async('blob'); const { im, u } = await thermalLoadImage(blob); loaded.push({ it, blob, w: im.naturalWidth, h: im.naturalHeight }); URL.revokeObjectURL(u); } catch (e) {}
+        }
+        if (!loaded.length) throw new Error('gambar tidak bisa dibaca (kemungkinan format EMF/WMF)');
+        const scales = loaded.filter(l => l.h / l.w > 2.2);
+        const rest = loaded.filter(l => scales.indexOf(l) < 0);
+        if (rest.length > 1 && rest.every(l => l.it.anchored && l.it.offX != null)) rest.sort((a, b) => a.it.offX - b.it.offX);
+        const thermal = rest[0] || loaded[0], vis = rest[1] || null;
+        const dataUrl = await thermalCompose(zip, [thermal.it].concat(scales.map(s => s.it)), 0);
+        let visUrl = '';
+        if (vis) { try { visUrl = (await capBlobToJpeg(vis.blob, 600)).dataUrl; } catch (e) {} }
+        return { dataUrl, visUrl };
+    }
+    async function trafoHandleFiles(input){
+        const files = Array.from(input.files || []);
+        if (!files.length) return;
+        const st = document.getElementById('trafoStatus');
+        const dmy = document.getElementById('trafoDateOrder').value === 'dmy';
+        trafoDraft = []; const warns = [];
+        for (const file of files) {
+            st.textContent = 'Membaca ' + file.name + '...';
+            try {
+                const buf = await file.arrayBuffer(), u8 = new Uint8Array(buf);
+                if (!(u8[0] === 0x50 && u8[1] === 0x4B)) { warns.push(file.name + ': bukan .docx (simpan dulu sebagai .docx lewat Word).'); continue; }
+                const zip = await JSZip.loadAsync(buf);
+                const docF = zip.file('word/document.xml'), relF = zip.file('word/_rels/document.xml.rels');
+                if (!docF || !relF) { warns.push(file.name + ': struktur dokumen tidak dikenali.'); continue; }
+                const recs = trafoExtractRecords(await docF.async('string'), thermalParseRels(await relF.async('string')), dmy);
+                if (!recs.length) warns.push(file.name + ': tidak ditemukan judul "TR1/TR2/TR3 INPUT/OUTPUT ..." + foto.');
+                for (const r of recs) {
+                    try { const c = await trafoComposeRecord(zip, r.imgs); r.dataUrl = c.dataUrl; r.visUrl = c.visUrl; } catch (e) { r.error = e.message; }
+                    r.imgs = null; trafoDraft.push(r);
+                }
+            } catch (e) { warns.push(file.name + ': ' + e.message); }
+        }
+        input.value = '';
+        trafoRenderDraft();
+        st.innerHTML = (trafoDraft.length ? trafoDraft.length + ' foto terbaca — cek tanggal, trafo & posisi, lalu klik "Simpan ke GSheet".' : 'Tidak ada foto yang terbaca.') +
+            (warns.length ? '<br><span class="text-warning">' + warns.map(thermalEsc).join('<br>') + '</span>' : '');
+    }
+    function trafoRenderDraft(){
+        const box = document.getElementById('trafoDraftBox');
+        if (!trafoDraft.length) { box.innerHTML = ''; return; }
+        const tOpts = '<option value="">— trafo —</option>' + [1, 2, 3].map(n => '<option value="' + n + '">Trafo ' + n + '</option>').join('');
+        const pOpts = '<option value="">— posisi —</option>' + TRAFO_POS_ORDER.map(p => '<option value="' + p + '">' + TRAFO_POS_LABEL[p] + '</option>').join('');
+        let h = '<div class="table-responsive"><table class="table table-sm align-middle"><thead><tr><th></th><th>Thermal</th><th>Visible</th><th>File asli</th><th>Tanggal</th><th>Trafo</th><th>Posisi</th></tr></thead><tbody>';
+        trafoDraft.forEach((r, i) => {
+            h += '<tr><td><input type="checkbox" class="trafo-chk" data-i="' + i + '" ' + (r.error || r.saved ? 'disabled' : 'checked') + '></td>' +
+                '<td>' + (r.dataUrl ? '<img src="' + r.dataUrl + '" style="height:64px;border-radius:4px;">' : '<span class="text-danger small">' + thermalEsc(r.error) + '</span>') + '</td>' +
+                '<td>' + (r.visUrl ? '<img src="' + r.visUrl + '" style="height:64px;border-radius:4px;">' : '-') + '</td>' +
+                '<td class="small">' + thermalEsc(r.fileName || '-') + (r.saved ? ' <span class="text-success">✓ tersimpan</span>' : '') + '<br><span class="text-secondary">' + thermalEsc(r.rawDate) + '</span></td>' +
+                '<td><input type="date" class="form-control form-control-sm trafo-date" data-i="' + i + '" value="' + thermalEsc(r.date) + '" style="width:150px"></td>' +
+                '<td><select class="form-select form-select-sm trafo-no" data-i="' + i + '" style="width:110px">' + tOpts + '</select></td>' +
+                '<td><select class="form-select form-select-sm trafo-pos" data-i="' + i + '" style="width:220px">' + pOpts + '</select></td></tr>';
+        });
+        box.innerHTML = h + '</tbody></table></div>';
+        box.querySelectorAll('.trafo-no').forEach(s => { s.value = trafoDraft[+s.dataset.i].trafo || ''; });
+        box.querySelectorAll('.trafo-pos').forEach(s => { s.value = trafoDraft[+s.dataset.i].pos || ''; });
+    }
+    async function trafoSaveDraft(){
+        const st = document.getElementById('trafoStatus'), box = document.getElementById('trafoDraftBox');
+        const jobs = [];
+        box.querySelectorAll('.trafo-chk').forEach(chk => {
+            if (!chk.checked) return;
+            const i = +chk.dataset.i, r = trafoDraft[i];
+            const q = c => box.querySelector('.' + c + '[data-i="' + i + '"]').value;
+            const date = q('trafo-date'), trafo = q('trafo-no'), pos = q('trafo-pos');
+            if (r.dataUrl && date && trafo && pos && !r.saved) jobs.push({ r, date, trafo, pos });
+        });
+        if (!jobs.length) { alert('Belum ada foto yang siap — pastikan tanggal, trafo & posisi terisi dan kotak centang aktif.'); return; }
+        const seen = {}; jobs.forEach(j => { const k = j.date + '|' + j.trafo + '|' + j.pos; seen[k] = (seen[k] || 0) + 1; });
+        const dup = Object.keys(seen).filter(k => seen[k] > 1);
+        if (dup.length && !confirm('Ada kombinasi tanggal+trafo+posisi yang dobel (' + dup.join(', ') + '). Yang terakhir menimpa. Lanjutkan?')) return;
+        let ok = 0; uploadBusy++;
+        try {
+            for (const j of jobs) {
+                const tag = j.date + ' TR' + j.trafo + ' ' + j.pos;
+                st.textContent = 'Menyimpan ' + (ok + 1) + ' / ' + jobs.length + ' (' + tag + ')...';
+                try {
+                    const r = await authPostRetry({ action: 'trafoUpload', username: currentUser.username, token: currentUser.token, date: j.date, trafo: j.trafo, pos: j.pos, fileName: j.r.fileName || '', mime: 'image/jpeg', data: j.r.dataUrl.split(',')[1], visData: j.r.visUrl ? j.r.visUrl.split(',')[1] : '' },
+                        (n, t) => { st.textContent = 'Koneksi terputus, mencoba ulang ' + n + '/' + t + ' (' + tag + ')...'; });
+                    if (!r || !r.ok) throw new Error((r && r.message) || 'backend menolak (pastikan Code.gs sudah diperbarui)');
+                    j.r.saved = true; ok++;
+                } catch (e) { trafoRenderDraft(); st.innerHTML = '<span class="text-danger">Gagal menyimpan ' + thermalEsc(tag) + ': ' + thermalEsc(e.message) + ' (tersimpan ' + ok + ' dari ' + jobs.length + ')</span>'; return; }
+            }
+        } finally { uploadBusy--; }
+        trafoDraft = []; trafoRenderDraft();
+        st.textContent = ok + ' foto tersimpan ke GSheet/Drive.';
+        trafoRefreshSaved();
+    }
+    async function trafoFetchList(){
+        const res = await fetch(SHEET_WEBAPP_URL + '?action=trafoList&t=' + Date.now() + authQs());
+        const j = await res.json();
+        if (!j || !j.ok) throw new Error((j && j.message) || 'trafoList gagal');
+        return j.rows || [];
+    }
+    async function trafoRefreshSaved(){
+        const el = document.getElementById('trafoSavedBox');
+        if (!el) return;
+        try {
+            const rows = await trafoFetchList();
+            if (!rows.length) { el.textContent = 'Belum ada foto tersimpan.'; return; }
+            const by = {};
+            rows.forEach(r => { (by[r.date] = by[r.date] || []).push('TR' + r.trafo + '-' + r.pos); });
+            el.innerHTML = Object.keys(by).sort().reverse().slice(0, 10).map(d => '<div><b>' + thermalEsc(d) + '</b> — ' + by[d].sort().map(thermalEsc).join(', ') + '</div>').join('');
+        } catch (e) { el.textContent = 'Daftar belum bisa dimuat (pastikan Code.gs sudah diperbarui).'; }
+    }
+    async function trafoFetchImageData(id){
+        const cached = await imgCacheGet(id);
+        if (cached) return cached;
+        const r = await fetch(SHEET_WEBAPP_URL + '?action=trafoImage&id=' + encodeURIComponent(id) + authQs());
+        const j = await r.json();
+        if (!j || !j.ok) throw new Error('trafoImage gagal');
+        const data = 'data:' + (j.mime || 'image/jpeg') + ';base64,' + j.data;
+        imgCacheSet(id, data);
+        return data;
+    }
+    // 3 tanggal terakhir (<= tanggal export) per trafo
+    async function trafoPrepareSlides(selDate){
+        let rows;
+        try { rows = await trafoFetchList(); } catch (e) { return []; }
+        const slides = [];
+        for (const n of [1, 2, 3]) {
+            const rs = rows.filter(r => r.trafo === n && TRAFO_POS_ORDER.indexOf(r.pos) >= 0 && r.date <= selDate);
+            const dates = Array.from(new Set(rs.map(r => r.date))).sort().reverse().slice(0, 3);
+            if (!dates.length) continue;
+            const need = rs.filter(r => dates.indexOf(r.date) >= 0);
+            const s = { trafo: n, dates, rows: {}, mw: {} };
+            TRAFO_POS_ORDER.forEach(p => { s.rows[p] = { cells: {}, vis: null }; });
+            const tasks = [];
+            need.forEach(r => tasks.push({ kind: 'th', r }));
+            TRAFO_POS_ORDER.forEach(p => {   // foto visible: dari tanggal terbaru yang punya
+                const v = need.filter(r => r.pos === p && r.visId).sort((a, b) => a.date < b.date ? 1 : -1)[0];
+                if (v) tasks.push({ kind: 'vis', r: v });
+            });
+            let idx = 0;
+            const worker = async () => {
+                while (idx < tasks.length) {
+                    const t = tasks[idx++];
+                    try {
+                        const data = await trafoFetchImageData(t.kind === 'vis' ? t.r.visId : t.r.fileId);
+                        const sz = await thermalImgSize(data);
+                        if (!sz) continue;
+                        const o = { data, w: sz.w, h: sz.h };
+                        if (t.kind === 'vis') s.rows[t.r.pos].vis = o; else s.rows[t.r.pos].cells[t.r.date] = o;
+                    } catch (e) {}
+                }
+            };
+            await Promise.all(Array.from({ length: 6 }, worker));
+            dates.forEach(d => { const rw = rawData.find(x => x.Date === d); s.mw[d] = rw ? getVal(rw, 'power') : null; });
+            slides.push(s);
+        }
+        return slides;
+    }
+    // Susunan slide meniru contoh manual
+    function trafoBuildItems(s, W, H, fs){
+        const it = [];
+        const rect = (x, y, w, h, color) => it.push({ t: 'rect', x: x * W, y: y * H, w: w * W, h: h * H, color });
+        rect(0, 0.036, 0.064, 0.063, 'D0202A');
+        rect(0.066, 0.036, 0.545, 0.063, 'C00000');
+        it.push({ t: 'text', text: TRAFO_SLIDE_TITLE[s.trafo] || TRAFO_SLIDE_TITLE[1], x: 0.066 * W, y: 0.036 * H, w: 0.545 * W, h: 0.063 * H, pt: 20 * fs, bold: true, color: 'FFFFFF', align: 'center' });
+        const lw = 0.14 * W;
+        it.push({ t: 'image', data: CERIA_LOGO_B64, fmt: 'PNG', x: 0.985 * W - lw, y: 0.012 * H, w: lw, h: lw / 3.23 });
+        const fit = (img, x, y, bw, bh) => {
+            const sc = Math.min(bw / img.w, bh / img.h), w = img.w * sc, h = img.h * sc;
+            return { x: x + (bw - w) / 2, y: y + (bh - h) / 2, w, h };
+        };
+        const colX = [0.215, 0.47, 0.725], colW = 0.245, rowTop = [0.105, 0.355, 0.605], imgH = 0.2;
+        TRAFO_POS_ORDER.forEach((p, ri) => {
+            const top = rowTop[ri];
+            it.push({ t: 'text', text: 'TR' + s.trafo + ' ' + TRAFO_POS_LABEL[p], x: 0.03 * W, y: top * H, w: 0.6 * W, h: 0.035 * H, pt: 15 * fs, bold: true, color: '000000', align: 'left' });
+            const R = s.rows[p], y0 = (top + 0.037) * H;
+            if (R.vis) { const b = fit(R.vis, 0.03 * W, y0, 0.17 * W, imgH * H); it.push({ t: 'image', data: R.vis.data, fmt: 'JPEG', x: b.x, y: b.y, w: b.w, h: b.h }); }
+            s.dates.forEach((d, ci) => {
+                const c = R.cells[d]; if (!c) return;
+                const b = fit(c, colX[ci] * W, y0, colW * W, imgH * H);
+                it.push({ t: 'image', data: c.data, fmt: 'JPEG', x: b.x, y: b.y, w: b.w, h: b.h });
+            });
+        });
+        const yl = 0.842 * H, hl = 0.04 * H;
+        it.push({ t: 'text', text: 'Visible Light Image', x: 0.03 * W, y: yl, w: 0.17 * W, h: hl, pt: 12 * fs, bold: true, color: '000000', align: 'center', highlight: 'FFFF00' });
+        s.dates.forEach((d, ci) => {
+            const mw = s.mw[d];
+            const txt = capLongDate(d) + (mw != null && !isNaN(mw) ? '- ' + Math.round(mw) + ' MW' : '');
+            it.push({ t: 'text', text: txt, x: colX[ci] * W, y: yl, w: colW * W, h: hl, pt: 12 * fs, bold: true, color: '000000', align: 'center', highlight: 'FFFF00' });
+        });
+        it.push({ t: 'text', text: TRAFO_FOOTER, x: 0.03 * W, y: 0.915 * H, w: 0.8 * W, h: 0.05 * H, pt: 18 * fs, bold: true, color: 'FF0000', align: 'left' });
+        [BRAND_RED, BRAND_YELLOW, BRAND_BLACK].forEach((col, i) => rect(i / 3, 0.984, 1 / 3, 0.016, col));
+        return it;
+    }
+
     // ==================== INPUT DATA HARIAN (tulis ke sheet Data 2026/2025 per tanggal) ====================
     const INPUT_ROLES = ['admin', 'engineer', 'supervisor'];   // harus sama dengan INPUT_ROLES di Code.gs
     let inputHeaders = [];        // [{col, letter, title}] hanya kolom yang punya judul
@@ -2437,35 +2700,87 @@
         if (!isNaN(t)) { const d = new Date(t); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
         return '';
     }
+    function inputNormHeader(s){ return String(s == null ? '' : s).replace(/\s+/g, ' ').trim().toLowerCase(); }
+    // kolom lanjutan (judul kosong) diberi judul otomatis, sama seperti inputHeaders di Code.gs
+    function inputSourceTitles(hr){
+        const out = []; let lastIdx = -1, lastTitle = '';
+        hr.forEach((c, i) => {
+            let t = inputNormHeader(c);
+            if (t) { lastIdx = i; lastTitle = t; }
+            else if (lastIdx >= 0 && i - lastIdx <= 6) t = lastTitle + ' #' + (i - lastIdx + 1);
+            out.push(t);
+        });
+        return out;
+    }
+    // pencocokan berurutan (LCS): tahan terhadap kolom yang hilang/tambahan & nama kembar
+    function inputAlign(sheetT, srcT){
+        const n = sheetT.length, m = srcT.length;
+        const dp = Array.from({ length: n + 1 }, () => new Uint16Array(m + 1));
+        for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--)
+            dp[i][j] = (sheetT[i] && sheetT[i] === srcT[j]) ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+        const map = new Map(); let i = 0, j = 0;
+        while (i < n && j < m) {
+            if (sheetT[i] && sheetT[i] === srcT[j]) { map.set(i, j); i++; j++; }
+            else if (dp[i + 1][j] >= dp[i][j + 1]) i++; else j++;
+        }
+        return map;
+    }
     function inputFillFromPaste(){
         if (!inputHeaders.length) { inputStatus('Daftar kolom belum dimuat.', 'text-danger'); return; }
         const rows = inputParseTsv(document.getElementById('inputPaste').value);
-        const dataRows = rows.filter(r => !/^date$/i.test(String(r[0] || '').trim()));
-        if (!dataRows.length) { inputStatus('Tidak ada baris data pada tempelan.', 'text-danger'); return; }
+        const hdrIdx = rows.findIndex(r => /^date$/i.test(String(r[0] || '').trim()));
+        const hdr = hdrIdx >= 0 ? rows[hdrIdx] : null;
+        const dataRows = rows.filter((r, i) => i !== hdrIdx);
+        if (!dataRows.length) { inputStatus('Tidak ada baris data pada tempelan' + (hdr ? ' (header terbaca, tapi baris datanya belum ikut dicopy).' : '.'), 'text-danger'); return; }
         const r = dataRows[0];
         const dmy = document.getElementById('inputDateOrder').value === 'dmy';
-        const hiddenMode = document.getElementById('inputHiddenCol').value;
-        // Kolom DM tersembunyi di Excel -> tidak ikut tersalin -> data setelah DM harus digeser 1 kolom ke kanan
-        const shift = hiddenMode === 'skip' ? true : (hiddenMode === 'none' ? false : (r.length === INPUT_FULL_COLS - 1 || (r.length < INPUT_FULL_COLS - 1 && r.length > INPUT_SKIP_IDX)));
         inputPasteCols = new Set();
-        let filled = 0;
-        inputHeaders.forEach(h => {
-            const el = document.querySelector('#inputGrid .inp-cell[data-col="' + h.col + '"]');
-            if (!el) return;
-            let si = h.col, blankByShift = false;
-            if (shift) { if (h.col === INPUT_SKIP_IDX) blankByShift = true; else if (h.col > INPUT_SKIP_IDX) si = h.col - 1; }
-            if (blankByShift || si < r.length) inputPasteCols.add(h.col);
-            let v = (blankByShift || r[si] == null) ? '' : String(r[si]).trim();
-            if (/^#/.test(v)) v = '';                              // #DIV/0!, #VALUE!, dst. tidak dipakai
-            if (h.col === inputDateCol) v = inputParseDate(v, dmy);
-            el.value = v; el.placeholder = ''; el.classList.remove('inp-formula');
-            if (v !== '') filled++;
-        });
+        let filled = 0, shiftNote = '', missing = [], lost = [];
+
+        if (hdr) {   // ---- MODE HEADER: cocokkan per nama kolom ----
+            const srcT = inputSourceTitles(hdr);
+            const map = inputAlign(inputHeaders.map(h => inputNormHeader(h.title)), srcT);
+            const used = new Set();
+            inputHeaders.forEach((h, k) => {
+                const el = document.querySelector('#inputGrid .inp-cell[data-col="' + h.col + '"]');
+                if (!el) return;
+                el.value = ''; el.placeholder = ''; el.classList.remove('inp-formula');
+                const si = map.get(k);
+                if (si === undefined) { missing.push(h.title); return; }   // tidak ada di tempelan -> dibiarkan
+                used.add(si); inputPasteCols.add(h.col);
+                let v = r[si] == null ? '' : String(r[si]).trim();
+                if (/^#/.test(v)) v = '';
+                if (h.col === inputDateCol) v = inputParseDate(v, dmy);
+                el.value = v; if (v !== '') filled++;
+            });
+            r.forEach((c, si) => { if (!used.has(si) && String(c).trim() !== '' && srcT[si]) lost.push(srcT[si]); });
+            shiftNote = ' (dicocokkan per nama header)';
+        } else {     // ---- MODE LAMA (tanpa header): berdasarkan posisi ----
+            const hiddenMode = document.getElementById('inputHiddenCol').value;
+            const shift = hiddenMode === 'skip' ? true : (hiddenMode === 'none' ? false : (r.length === INPUT_FULL_COLS - 1 || (r.length < INPUT_FULL_COLS - 1 && r.length > INPUT_SKIP_IDX)));
+            inputHeaders.forEach(h => {
+                const el = document.querySelector('#inputGrid .inp-cell[data-col="' + h.col + '"]');
+                if (!el) return;
+                let si = h.col, blankByShift = false;
+                if (shift) { if (h.col === INPUT_SKIP_IDX) blankByShift = true; else if (h.col > INPUT_SKIP_IDX) si = h.col - 1; }
+                if (blankByShift || si < r.length) inputPasteCols.add(h.col);
+                let v = (blankByShift || r[si] == null) ? '' : String(r[si]).trim();
+                if (/^#/.test(v)) v = '';
+                if (h.col === inputDateCol) v = inputParseDate(v, dmy);
+                el.value = v; el.placeholder = ''; el.classList.remove('inp-formula');
+                if (v !== '') filled++;
+            });
+            shiftNote = shift ? ' (kolom DM sumber tersembunyi → digeser otomatis)' : '';
+        }
         inputOriginal = {}; inputLoadedKey = ''; inputFromPaste = true;
         const d = document.getElementById('inputDate').value;
-        inputStatus(filled + ' kolom terisi dari tempelan' + (shift ? ' (kolom DM sumber tersembunyi → data digeser otomatis)' : '') + '.' + (d ? ' Tanggal terbaca: <b>' + thermalEsc(d) + '</b> — cek, lalu klik "Simpan ke sheet".' : ' <span class="text-warning">Tanggal tidak terbaca, isi manual.</span>') +
-            (dataRows.length > 1 ? ' <span class="text-warning">(Tempelan berisi ' + dataRows.length + ' baris; hanya baris pertama yang dipakai.)</span>' : ''));
+        inputStatus(filled + ' kolom terisi dari tempelan' + shiftNote + '.' +
+            (d ? ' Tanggal terbaca: <b>' + thermalEsc(d) + '</b> — cek, lalu klik "Simpan ke sheet".' : ' <span class="text-warning">Tanggal tidak terbaca, isi manual.</span>') +
+            (missing.length ? '<br><span class="text-secondary">Tidak ada di tempelan (sel di sheet tidak diubah): ' + thermalEsc(missing.join(', ')) + '.</span>' : '') +
+            (lost.length ? '<br><span class="text-warning">Ada di tempelan tapi tidak ketemu di sheet (tidak disimpan): ' + thermalEsc(lost.join(', ')) + '.</span>' : '') +
+            (dataRows.length > 1 ? '<br><span class="text-warning">Tempelan berisi ' + dataRows.length + ' baris data; hanya yang pertama dipakai.</span>' : ''));
     }
+
     async function inputLoadRow(){
         const date = document.getElementById('inputDate').value;
         if (!date) { inputStatus('Isi tanggal dulu.', 'text-danger'); return; }
@@ -2550,16 +2865,16 @@
         prefetchTimer = setTimeout(async () => {
             if (uploadBusy > 0) { schedulePrefetch(date); return; }   // tunggu upload selesai
             prefetchedDates.add(date);
-            try { await Promise.all([thermalPrepareSlides(date), capturePrepareSlides(date)]); } catch (e) {}
+            try { await Promise.all([thermalPrepareSlides(date), capturePrepareSlides(date), trafoPrepareSlides(date)]); } catch (e) {}
         }, 2500);
     }
     function capSyncDate(d){ const el = document.getElementById('capDate'); if (el && !el.value) { el.value = d; capRefreshSaved(); } }
 
-    function capBlobToJpeg(blob){
+    function capBlobToJpeg(blob, maxW){
         return new Promise((res, rej) => {
             const u = URL.createObjectURL(blob), im = new Image();
             im.onload = () => {
-                const s = Math.min(1, 1600 / im.naturalWidth);
+                const s = Math.min(1, (maxW || 1600) / im.naturalWidth);
                 const c = document.createElement('canvas');
                 c.width = Math.round(im.naturalWidth * s); c.height = Math.round(im.naturalHeight * s);
                 const g = c.getContext('2d');
