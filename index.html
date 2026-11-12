@@ -739,10 +739,10 @@
   <div class="row">
     <div class="col-lg-12">
       <div class="excel-panel no-export" id="trafoPanel">
-        <div class="excel-panel-title">⚡ FCE Monitoring Trafo, Cable 33 KV — Import Laporan (.docx)</div>
+        <div class="excel-panel-title">🔌 FCE Monitoring Trafo / Cable 33 kV — Import Laporan Foto Thermal</div>
         <div class="row g-2 align-items-end mb-2">
           <div class="col-auto">
-            <label class="form-label small text-secondary mb-1 d-block">File laporan trafo (.docx)</label>
+            <label class="form-label small text-secondary mb-1 d-block">File laporan thermal (.docx)</label>
             <input type="file" id="trafoFileInput" accept=".docx" multiple class="form-control form-control-sm" onchange="trafoHandleFiles(this)">
           </div>
           <div class="col-auto">
@@ -754,11 +754,16 @@
           </div>
           <div class="col-auto"><button class="btn btn-sm btn-info" onclick="trafoSaveDraft()">💾 Simpan ke GSheet</button></div>
         </div>
-        <div class="small text-secondary mb-2" id="trafoStatus">Pilih file .docx — judul foto (mis. TR1 INPUT DS 33 KV), tanggal, foto thermal &amp; visible light dibaca otomatis.</div>
+        <div class="row g-2 mb-2">
+          <div class="col-md-4"><label class="form-label small text-secondary mb-1 d-block">Judul slide Trafo 1</label><input type="text" id="trafoTitle1" class="form-control form-control-sm" onchange="trafoTitlesSave()"></div>
+          <div class="col-md-4"><label class="form-label small text-secondary mb-1 d-block">Judul slide Trafo 2</label><input type="text" id="trafoTitle2" class="form-control form-control-sm" onchange="trafoTitlesSave()"></div>
+          <div class="col-md-4"><label class="form-label small text-secondary mb-1 d-block">Judul slide Trafo 3</label><input type="text" id="trafoTitle3" class="form-control form-control-sm" onchange="trafoTitlesSave()"></div>
+        </div>
+        <div class="small text-secondary mb-2" id="trafoStatus">Pilih laporan thermal (.docx): judul foto seperti "TR1 INPUT DS 33 KV" dibaca otomatis untuk menentukan trafo dan titiknya.</div>
         <div id="trafoDraftBox"></div>
-        <div class="lbl mt-3 mb-1">Foto tersimpan di GSheet (10 tanggal terakhir)</div>
+        <div class="lbl mt-3 mb-1">Foto tersimpan di GSheet (14 tanggal terakhir)</div>
         <div class="small" id="trafoSavedBox">-</div>
-        <div class="excel-note">Export PPT/PDF: 1 slide per trafo (1–3), memakai 3 tanggal terakhir ≤ tanggal yang dipilih. Slide muncul setelah slide thermal.</div>
+        <div class="excel-note">Titik: INPUT DS, OUTPUT DS, INPUT TRANSFORMER (dan OUTPUT TRANSFORMER bila ada). Export PPT/PDF membuat 1 slide per trafo: 3 tanggal terbaru ≤ tanggal yang dipilih, label tanggal diikuti beban furnace (MW) dari data harian.</div>
       </div>
     </div>
   </div>
@@ -782,7 +787,7 @@
     </div>
     <div class="row g-2 align-items-end">
       <div class="col-lg-8">
-        <label class="form-label small text-secondary mb-1">Tempel <b>baris header + 1 baris data</b> dari Excel/GSheet (kolom yang hidden tidak masalah)</label>
+        <label class="form-label small text-secondary mb-1">Tempel 1 baris data (copy kolom A sampai akhir dari Excel/GSheet)</label>
         <textarea id="inputPaste" class="form-control form-control-sm" rows="3" placeholder="Copy 1 baris data lalu paste di sini — form di bawah terisi otomatis" onpaste="setTimeout(inputFillFromPaste, 50)" onchange="inputFillFromPaste()"></textarea>
       </div>
       <div class="col-lg-4">
@@ -791,12 +796,13 @@
           <option value="mdy">Bulan/Hari/Tahun (US)</option>
           <option value="dmy">Hari/Bulan/Tahun</option>
         </select>
-        <label class="form-label small text-secondary mb-1 d-block">Kolom DM di file sumber</label>
-        <select id="inputHiddenCol" class="form-select form-select-sm" title="Kolom DM yang disembunyikan di Excel tidak ikut tersalin, sehingga data setelahnya harus digeser satu kolom">
-          <option value="auto">Otomatis (deteksi dari jumlah kolom)</option>
-          <option value="skip">Tersembunyi → lewati DM</option>
-          <option value="none">Tampil (tempelan lengkap A–ER)</option>
+        <label class="form-label small text-secondary mb-1 d-block">Pola kolom tempelan</label>
+        <select id="inputHiddenCol" class="form-select form-select-sm" title="Kolom yang disembunyikan di Excel tidak ikut tersalin; aplikasi mencocokkan kolom lewat judul">
+          <option value="auto">Otomatis (pakai baris judul bila ikut dicopy, jika tidak pola tersimpan)</option>
+          <option value="template">Paksa pola kolom sumber tersimpan</option>
+          <option value="direct">Posisi sama persis dengan sheet</option>
         </select>
+        <div class="small text-secondary mt-1"><span id="inputPatternInfo">Pola kolom sumber tersimpan: -</span> · <a href="#" onclick="inputResetTemplate(); return false;">kembalikan ke bawaan</a></div>
       </div>
     </div>
     <div class="form-check mt-2 small">
@@ -1053,6 +1059,8 @@
         if (btnInput) btnInput.style.display = inputCanUse() ? '' : 'none';
         const capP = document.getElementById('capturePanel');
         if (capP) capP.style.display = captureCanUse() ? '' : 'none';
+        const trP = document.getElementById('trafoPanel');
+        if (trP) trP.style.display = trafoCanUse() ? '' : 'none';
     }
 
     function enterApp(){
@@ -1262,6 +1270,32 @@
         while ((x = re.exec(str))) m.push({ v: parseFloat(x[1]), loc: '(' + x[2].trim() + ')' });
         return m.length ? { lo: m[0], hi: m[m.length - 1] } : null;
     }
+    // Teks range suhu: dua pasang "angka C (lokasi)". Jenisnya dikenali dari ISI teks, bukan dari letak kolom,
+    // sehingga tetap benar walau data tersimpan bergeser satu kolom terhadap judulnya.
+    //   Bottom -> berlokasi "(el#2)"/"(el#3)" ; Freeboard -> berlokasi "(East)/(West) ... (center/central)" ; Sidewall -> berlokasi "(North)/(South)"
+    const TEMP_RANGE_RE = /^\s*-?\d+(?:\.\d+)?\s*°?\s*C?\s*\([^)]*\)\s*,\s*-?\d+(?:\.\d+)?\s*°?\s*C?\s*\([^)]*\)\s*,?\s*$/i;
+    function tempRangeKind(s){
+        if (/el\s*#/i.test(s)) return 'bottom';
+        if (/cent/i.test(s)) return 'freeboard';
+        if (/north|south/i.test(s)) return 'sidewall';
+        return null;
+    }
+    function rowTempRanges(row){
+        const out = { bottom: null, freeboard: null, sidewall: null };
+        Object.keys(row).forEach(k => {
+            const v = row[k];
+            if (typeof v !== 'string' || !TEMP_RANGE_RE.test(v)) return;
+            const kind = tempRangeKind(v);
+            if (kind && !out[kind]) out[kind] = v;
+        });
+        // cadangan: kolom berjudul "(Lowest to Highest)" bila jenisnya tidak bisa dikenali dari isi
+        [['bottom', 'tempBottomRange'], ['freeboard', 'tempFreeboardRange'], ['sidewall', 'tempSidewallRange']].forEach(z => {
+            if (out[z[0]]) return;
+            const raw = getRawExact(row, z[1]);
+            if (raw != null && parseTempRange(raw) && Object.keys(out).every(k => out[k] !== raw) && !tempRangeKind(String(raw))) out[z[0]] = raw;
+        });
+        return out;
+    }
     function getVal(row, fieldKey){
         const candidates = EXCEL_FIELDS[fieldKey] || [fieldKey];
         const keys = Object.keys(row);
@@ -1339,8 +1373,8 @@
             const sheetParam = sheetSel ? sheetSel.value : 'Data 2026';
             rawData = await fetchSheetData(sheetParam);
             await loadLadleData(sheetParam);
-            trafoRefreshSaved();
             thermalRefreshSaved();
+            trafoRefreshSaved();
             populateExcelDateSelect();
             if (document.getElementById('viewExcel').style.display !== 'none') renderExcelDashboard();
             const now = new Date();
@@ -1564,7 +1598,7 @@
             const dateLabel = document.getElementById('excelDateLabel').innerText || 'dashboard';
 
             pdfAddCoverPage(pdf, pageW, pageH, dateLabel);
-            const thermalP = thermalPrepareSlides(dateLabel), capP = capturePrepareSlides(dateLabel); const trafoP = trafoPrepareSlides(dateLabel);   // unduh paralel dengan proses gambar panel
+            const thermalP = thermalPrepareSlides(dateLabel), capP = capturePrepareSlides(dateLabel), trafoP = trafoPrepareSlides(dateLabel);   // unduh paralel dengan proses gambar panel
 
             const margin = 4, gap = 3, topSafe = 12, bottomSafe = 6;
             const usableW = pageW - margin * 2;
@@ -1596,9 +1630,10 @@
             if (btn) btn.innerText = '⏳ Menunggu foto thermal/capture...';
             const thermalSlides = await thermalP;
             thermalSlides.forEach(s => thermalRenderPdf(pdf, thermalBuildItems(s, pageW, pageH, 0.877), pageW, pageH));
-            (await trafoP).forEach(s => thermalRenderPdf(pdf, trafoBuildItems(s, pageW, pageH, 0.877), pageW, pageH));
             const capSlides = await capP;
             capSlides.forEach(s => thermalRenderPdf(pdf, captureBuildItems(s, pageW, pageH, 0.877), pageW, pageH));
+            const trafoSlides = await trafoP;
+            trafoSlides.forEach(s => thermalRenderPdf(pdf, trafoBuildItems(s, pageW, pageH, 0.877), pageW, pageH));
 
             pdfAddThankYouPage(pdf, pageW, pageH);
 
@@ -1694,7 +1729,7 @@
             pptx.layout = 'WIDE';
             const dateLabel = document.getElementById('excelDateLabel').innerText || 'dashboard';
             addCoverSlide(pptx, dateLabel);
-            const thermalP = thermalPrepareSlides(dateLabel), capP = capturePrepareSlides(dateLabel); const trafoP = trafoPrepareSlides(dateLabel);   // unduh paralel dengan proses gambar panel
+            const thermalP = thermalPrepareSlides(dateLabel), capP = capturePrepareSlides(dateLabel), trafoP = trafoPrepareSlides(dateLabel);   // unduh paralel dengan proses gambar panel
             const deckMode = document.getElementById('exportStyleSelect').value === 'deck';
             if (deckMode) deckBuildSlides(13.33, 7.5, 1).forEach(items => thermalRenderPptx(pptx, items));
             for (const panel of (deckMode ? [] : panels)) {
@@ -1712,9 +1747,10 @@
             if (btn) btn.innerText = '⏳ Menunggu foto thermal/capture...';
             const thermalSlides = await thermalP;
             thermalSlides.forEach(s => thermalRenderPptx(pptx, thermalBuildItems(s, 13.33, 7.5, 1)));
-            (await trafoP).forEach(s => thermalRenderPptx(pptx, trafoBuildItems(s, 13.33, 7.5, 1)));
             const capSlides = await capP;
             capSlides.forEach(s => thermalRenderPptx(pptx, captureBuildItems(s, 13.33, 7.5, 1)));
+            const trafoSlides = await trafoP;
+            trafoSlides.forEach(s => thermalRenderPptx(pptx, trafoBuildItems(s, 13.33, 7.5, 1)));
             addThankYouSlide(pptx);
             await pptx.writeFile({ fileName: `Furnace_Daily_Report_${dateLabel}.pptx` });
         } catch (err) {
@@ -1890,7 +1926,7 @@
         });
     }
     // Gabungkan foto thermal + skala suhu (kalau terpisah di dokumen) jadi satu gambar JPEG
-    async function thermalCompose(zip, imgs, minFrac){
+    async function thermalCompose(zip, imgs){
         const loaded = [];
         for (const it of imgs) {
             const f = zip.file(it.path);
@@ -1900,7 +1936,7 @@
         if (!loaded.length) throw new Error('gambar tidak bisa dibaca (kemungkinan format EMF/WMF)');
         const area = l => l.im.naturalWidth * l.im.naturalHeight;
         const maxA = Math.max(...loaded.map(area));
-        const use = loaded.filter(l => area(l) >= maxA * (minFrac === undefined ? 0.01 : minFrac));
+        const use = loaded.filter(l => area(l) >= maxA * 0.01);
         const allAnch = use.length > 1 && use.every(l => l.it.anchored && l.it.offX != null && l.it.offY != null);
         let xAcc = 0;
         const pos = use.map(l => {
@@ -2138,7 +2174,7 @@
                 if (Array.isArray(i.text)) {
                     slide.addText(i.text.map(r => ({ text: r.text, options: { fontSize: r.pt, bold: r.bold !== false, color: r.color } })), base);
                 } else {
-                    slide.addText(i.text, Object.assign(base, { fontSize: i.pt, bold: !!i.bold, color: i.color }, i.highlight ? { highlight: i.highlight } : {}));
+                    slide.addText(i.text, Object.assign(base, { fontSize: i.pt, bold: !!i.bold, italic: !!i.italic, color: i.color }, i.highlight ? { highlight: i.highlight } : {}));
                 }
             }
         });
@@ -2159,7 +2195,7 @@
             });
             return;
         }
-        pdf.setFont('helvetica', i.bold ? 'bold' : 'normal'); pdf.setFontSize(i.pt);
+        pdf.setFont('helvetica', i.bold ? (i.italic ? 'bolditalic' : 'bold') : (i.italic ? 'italic' : 'normal')); pdf.setFontSize(i.pt);
         const lines = String(i.text).split('\n').reduce((a, l) => a.concat(pdf.splitTextToSize(l, i.w)), []);
         const lh = i.pt * mm * 1.35, total = lines.length * lh;
         const y0 = valign === 'top' ? i.y : valign === 'bottom' ? i.y + i.h - total : i.y + (i.h - total) / 2;
@@ -2370,242 +2406,10 @@
         return slides;
     }
 
-    // ==================== FCE MONITORING TRAFO (import .docx -> GSheet/Drive -> slide PPT/PDF) ====================
-    const TRAFO_POS_ORDER = ['INDS', 'OUTDS', 'INTR'];
-    const TRAFO_POS_LABEL = { INDS: 'INPUT DS 33KV', OUTDS: 'OUTPUT DS 33KV', INTR: 'INPUT TRANSFORMER 33KV' };
-    // Ubah nomor breaker di sini bila tiap trafo berbeda
-    const TRAFO_SLIDE_TITLE = {
-        1: 'FCE MONITORING TRAFO, CABLE 33 KV, BREAKER AH102',
-        2: 'FCE MONITORING TRAFO, CABLE 33 KV, BREAKER AH102',
-        3: 'FCE MONITORING TRAFO, CABLE 33 KV, BREAKER AH102'
-    };
-    const TRAFO_FOOTER = 'Temperature Parameter Trafo Cable <70°C';
-    let trafoDraft = [];
-
-    // "TR1 INPUT DS 33 KV" -> {trafo:1, pos:'INDS'}
-    function trafoParseTitle(text){
-        const m = String(text || '').match(/TR(?:AFO)?\s*-?\s*([123])\s+(INPUT|OUTPUT|IN|OUT)\s+(DS|TRAFO|TRANSFORMER|TRF)/i);
-        if (!m) return null;
-        const out = /^OUT/i.test(m[2]), ds = /^DS$/i.test(m[3]);
-        return { trafo: +m[1], pos: (!out && ds) ? 'INDS' : (out && ds) ? 'OUTDS' : (!out ? 'INTR' : '') };
-    }
-    // Tiap judul "TRx ..." memulai satu record; semua gambar & teks sampai judul berikutnya milik record itu
-    function trafoExtractRecords(docXml, rels, dmy){
-        const doc = new DOMParser().parseFromString(docXml, 'application/xml');
-        const body = doc.getElementsByTagName('w:body')[0];
-        const recs = []; let cur = null;
-        Array.from(body.children).forEach(el => {
-            const lines = thermalElementLines(el), imgs = thermalElementImages(el, rels);
-            let t = null;
-            lines.forEach(l => { const x = trafoParseTitle(l); if (x) t = x; });
-            if (t) { cur = { title: t, imgs: [], lines: [] }; recs.push(cur); }
-            if (!cur) return;
-            cur.imgs.push(...imgs); cur.lines.push(...lines);
-        });
-        return recs.filter(r => r.imgs.length).map(r => {
-            const meta = thermalReadMeta({ imgs: r.imgs, lines: r.lines }, dmy);
-            meta.trafo = r.title.trafo; meta.pos = r.title.pos;
-            return meta;
-        });
-    }
-    // Pisahkan: skala suhu (tinggi-sempit), foto thermal (pertama), foto visible light (kedua)
-    async function trafoComposeRecord(zip, imgs){
-        const loaded = [];
-        for (const it of imgs) {
-            const f = zip.file(it.path); if (!f) continue;
-            try { const blob = await f.async('blob'); const { im, u } = await thermalLoadImage(blob); loaded.push({ it, blob, w: im.naturalWidth, h: im.naturalHeight }); URL.revokeObjectURL(u); } catch (e) {}
-        }
-        if (!loaded.length) throw new Error('gambar tidak bisa dibaca (kemungkinan format EMF/WMF)');
-        const scales = loaded.filter(l => l.h / l.w > 2.2);
-        const rest = loaded.filter(l => scales.indexOf(l) < 0);
-        if (rest.length > 1 && rest.every(l => l.it.anchored && l.it.offX != null)) rest.sort((a, b) => a.it.offX - b.it.offX);
-        const thermal = rest[0] || loaded[0], vis = rest[1] || null;
-        const dataUrl = await thermalCompose(zip, [thermal.it].concat(scales.map(s => s.it)), 0);
-        let visUrl = '';
-        if (vis) { try { visUrl = (await capBlobToJpeg(vis.blob, 600)).dataUrl; } catch (e) {} }
-        return { dataUrl, visUrl };
-    }
-    async function trafoHandleFiles(input){
-        const files = Array.from(input.files || []);
-        if (!files.length) return;
-        const st = document.getElementById('trafoStatus');
-        const dmy = document.getElementById('trafoDateOrder').value === 'dmy';
-        trafoDraft = []; const warns = [];
-        for (const file of files) {
-            st.textContent = 'Membaca ' + file.name + '...';
-            try {
-                const buf = await file.arrayBuffer(), u8 = new Uint8Array(buf);
-                if (!(u8[0] === 0x50 && u8[1] === 0x4B)) { warns.push(file.name + ': bukan .docx (simpan dulu sebagai .docx lewat Word).'); continue; }
-                const zip = await JSZip.loadAsync(buf);
-                const docF = zip.file('word/document.xml'), relF = zip.file('word/_rels/document.xml.rels');
-                if (!docF || !relF) { warns.push(file.name + ': struktur dokumen tidak dikenali.'); continue; }
-                const recs = trafoExtractRecords(await docF.async('string'), thermalParseRels(await relF.async('string')), dmy);
-                if (!recs.length) warns.push(file.name + ': tidak ditemukan judul "TR1/TR2/TR3 INPUT/OUTPUT ..." + foto.');
-                for (const r of recs) {
-                    try { const c = await trafoComposeRecord(zip, r.imgs); r.dataUrl = c.dataUrl; r.visUrl = c.visUrl; } catch (e) { r.error = e.message; }
-                    r.imgs = null; trafoDraft.push(r);
-                }
-            } catch (e) { warns.push(file.name + ': ' + e.message); }
-        }
-        input.value = '';
-        trafoRenderDraft();
-        st.innerHTML = (trafoDraft.length ? trafoDraft.length + ' foto terbaca — cek tanggal, trafo & posisi, lalu klik "Simpan ke GSheet".' : 'Tidak ada foto yang terbaca.') +
-            (warns.length ? '<br><span class="text-warning">' + warns.map(thermalEsc).join('<br>') + '</span>' : '');
-    }
-    function trafoRenderDraft(){
-        const box = document.getElementById('trafoDraftBox');
-        if (!trafoDraft.length) { box.innerHTML = ''; return; }
-        const tOpts = '<option value="">— trafo —</option>' + [1, 2, 3].map(n => '<option value="' + n + '">Trafo ' + n + '</option>').join('');
-        const pOpts = '<option value="">— posisi —</option>' + TRAFO_POS_ORDER.map(p => '<option value="' + p + '">' + TRAFO_POS_LABEL[p] + '</option>').join('');
-        let h = '<div class="table-responsive"><table class="table table-sm align-middle"><thead><tr><th></th><th>Thermal</th><th>Visible</th><th>File asli</th><th>Tanggal</th><th>Trafo</th><th>Posisi</th></tr></thead><tbody>';
-        trafoDraft.forEach((r, i) => {
-            h += '<tr><td><input type="checkbox" class="trafo-chk" data-i="' + i + '" ' + (r.error || r.saved ? 'disabled' : 'checked') + '></td>' +
-                '<td>' + (r.dataUrl ? '<img src="' + r.dataUrl + '" style="height:64px;border-radius:4px;">' : '<span class="text-danger small">' + thermalEsc(r.error) + '</span>') + '</td>' +
-                '<td>' + (r.visUrl ? '<img src="' + r.visUrl + '" style="height:64px;border-radius:4px;">' : '-') + '</td>' +
-                '<td class="small">' + thermalEsc(r.fileName || '-') + (r.saved ? ' <span class="text-success">✓ tersimpan</span>' : '') + '<br><span class="text-secondary">' + thermalEsc(r.rawDate) + '</span></td>' +
-                '<td><input type="date" class="form-control form-control-sm trafo-date" data-i="' + i + '" value="' + thermalEsc(r.date) + '" style="width:150px"></td>' +
-                '<td><select class="form-select form-select-sm trafo-no" data-i="' + i + '" style="width:110px">' + tOpts + '</select></td>' +
-                '<td><select class="form-select form-select-sm trafo-pos" data-i="' + i + '" style="width:220px">' + pOpts + '</select></td></tr>';
-        });
-        box.innerHTML = h + '</tbody></table></div>';
-        box.querySelectorAll('.trafo-no').forEach(s => { s.value = trafoDraft[+s.dataset.i].trafo || ''; });
-        box.querySelectorAll('.trafo-pos').forEach(s => { s.value = trafoDraft[+s.dataset.i].pos || ''; });
-    }
-    async function trafoSaveDraft(){
-        const st = document.getElementById('trafoStatus'), box = document.getElementById('trafoDraftBox');
-        const jobs = [];
-        box.querySelectorAll('.trafo-chk').forEach(chk => {
-            if (!chk.checked) return;
-            const i = +chk.dataset.i, r = trafoDraft[i];
-            const q = c => box.querySelector('.' + c + '[data-i="' + i + '"]').value;
-            const date = q('trafo-date'), trafo = q('trafo-no'), pos = q('trafo-pos');
-            if (r.dataUrl && date && trafo && pos && !r.saved) jobs.push({ r, date, trafo, pos });
-        });
-        if (!jobs.length) { alert('Belum ada foto yang siap — pastikan tanggal, trafo & posisi terisi dan kotak centang aktif.'); return; }
-        const seen = {}; jobs.forEach(j => { const k = j.date + '|' + j.trafo + '|' + j.pos; seen[k] = (seen[k] || 0) + 1; });
-        const dup = Object.keys(seen).filter(k => seen[k] > 1);
-        if (dup.length && !confirm('Ada kombinasi tanggal+trafo+posisi yang dobel (' + dup.join(', ') + '). Yang terakhir menimpa. Lanjutkan?')) return;
-        let ok = 0; uploadBusy++;
-        try {
-            for (const j of jobs) {
-                const tag = j.date + ' TR' + j.trafo + ' ' + j.pos;
-                st.textContent = 'Menyimpan ' + (ok + 1) + ' / ' + jobs.length + ' (' + tag + ')...';
-                try {
-                    const r = await authPostRetry({ action: 'trafoUpload', username: currentUser.username, token: currentUser.token, date: j.date, trafo: j.trafo, pos: j.pos, fileName: j.r.fileName || '', mime: 'image/jpeg', data: j.r.dataUrl.split(',')[1], visData: j.r.visUrl ? j.r.visUrl.split(',')[1] : '' },
-                        (n, t) => { st.textContent = 'Koneksi terputus, mencoba ulang ' + n + '/' + t + ' (' + tag + ')...'; });
-                    if (!r || !r.ok) throw new Error((r && r.message) || 'backend menolak (pastikan Code.gs sudah diperbarui)');
-                    j.r.saved = true; ok++;
-                } catch (e) { trafoRenderDraft(); st.innerHTML = '<span class="text-danger">Gagal menyimpan ' + thermalEsc(tag) + ': ' + thermalEsc(e.message) + ' (tersimpan ' + ok + ' dari ' + jobs.length + ')</span>'; return; }
-            }
-        } finally { uploadBusy--; }
-        trafoDraft = []; trafoRenderDraft();
-        st.textContent = ok + ' foto tersimpan ke GSheet/Drive.';
-        trafoRefreshSaved();
-    }
-    async function trafoFetchList(){
-        const res = await fetch(SHEET_WEBAPP_URL + '?action=trafoList&t=' + Date.now() + authQs());
-        const j = await res.json();
-        if (!j || !j.ok) throw new Error((j && j.message) || 'trafoList gagal');
-        return j.rows || [];
-    }
-    async function trafoRefreshSaved(){
-        const el = document.getElementById('trafoSavedBox');
-        if (!el) return;
-        try {
-            const rows = await trafoFetchList();
-            if (!rows.length) { el.textContent = 'Belum ada foto tersimpan.'; return; }
-            const by = {};
-            rows.forEach(r => { (by[r.date] = by[r.date] || []).push('TR' + r.trafo + '-' + r.pos); });
-            el.innerHTML = Object.keys(by).sort().reverse().slice(0, 10).map(d => '<div><b>' + thermalEsc(d) + '</b> — ' + by[d].sort().map(thermalEsc).join(', ') + '</div>').join('');
-        } catch (e) { el.textContent = 'Daftar belum bisa dimuat (pastikan Code.gs sudah diperbarui).'; }
-    }
-    async function trafoFetchImageData(id){
-        const cached = await imgCacheGet(id);
-        if (cached) return cached;
-        const r = await fetch(SHEET_WEBAPP_URL + '?action=trafoImage&id=' + encodeURIComponent(id) + authQs());
-        const j = await r.json();
-        if (!j || !j.ok) throw new Error('trafoImage gagal');
-        const data = 'data:' + (j.mime || 'image/jpeg') + ';base64,' + j.data;
-        imgCacheSet(id, data);
-        return data;
-    }
-    // 3 tanggal terakhir (<= tanggal export) per trafo
-    async function trafoPrepareSlides(selDate){
-        let rows;
-        try { rows = await trafoFetchList(); } catch (e) { return []; }
-        const slides = [];
-        for (const n of [1, 2, 3]) {
-            const rs = rows.filter(r => r.trafo === n && TRAFO_POS_ORDER.indexOf(r.pos) >= 0 && r.date <= selDate);
-            const dates = Array.from(new Set(rs.map(r => r.date))).sort().reverse().slice(0, 3);
-            if (!dates.length) continue;
-            const need = rs.filter(r => dates.indexOf(r.date) >= 0);
-            const s = { trafo: n, dates, rows: {}, mw: {} };
-            TRAFO_POS_ORDER.forEach(p => { s.rows[p] = { cells: {}, vis: null }; });
-            const tasks = [];
-            need.forEach(r => tasks.push({ kind: 'th', r }));
-            TRAFO_POS_ORDER.forEach(p => {   // foto visible: dari tanggal terbaru yang punya
-                const v = need.filter(r => r.pos === p && r.visId).sort((a, b) => a.date < b.date ? 1 : -1)[0];
-                if (v) tasks.push({ kind: 'vis', r: v });
-            });
-            let idx = 0;
-            const worker = async () => {
-                while (idx < tasks.length) {
-                    const t = tasks[idx++];
-                    try {
-                        const data = await trafoFetchImageData(t.kind === 'vis' ? t.r.visId : t.r.fileId);
-                        const sz = await thermalImgSize(data);
-                        if (!sz) continue;
-                        const o = { data, w: sz.w, h: sz.h };
-                        if (t.kind === 'vis') s.rows[t.r.pos].vis = o; else s.rows[t.r.pos].cells[t.r.date] = o;
-                    } catch (e) {}
-                }
-            };
-            await Promise.all(Array.from({ length: 6 }, worker));
-            dates.forEach(d => { const rw = rawData.find(x => x.Date === d); s.mw[d] = rw ? getVal(rw, 'power') : null; });
-            slides.push(s);
-        }
-        return slides;
-    }
-    // Susunan slide meniru contoh manual
-    function trafoBuildItems(s, W, H, fs){
-        const it = [];
-        const rect = (x, y, w, h, color) => it.push({ t: 'rect', x: x * W, y: y * H, w: w * W, h: h * H, color });
-        rect(0, 0.036, 0.064, 0.063, 'D0202A');
-        rect(0.066, 0.036, 0.545, 0.063, 'C00000');
-        it.push({ t: 'text', text: TRAFO_SLIDE_TITLE[s.trafo] || TRAFO_SLIDE_TITLE[1], x: 0.066 * W, y: 0.036 * H, w: 0.545 * W, h: 0.063 * H, pt: 20 * fs, bold: true, color: 'FFFFFF', align: 'center' });
-        const lw = 0.14 * W;
-        it.push({ t: 'image', data: CERIA_LOGO_B64, fmt: 'PNG', x: 0.985 * W - lw, y: 0.012 * H, w: lw, h: lw / 3.23 });
-        const fit = (img, x, y, bw, bh) => {
-            const sc = Math.min(bw / img.w, bh / img.h), w = img.w * sc, h = img.h * sc;
-            return { x: x + (bw - w) / 2, y: y + (bh - h) / 2, w, h };
-        };
-        const colX = [0.215, 0.47, 0.725], colW = 0.245, rowTop = [0.105, 0.355, 0.605], imgH = 0.2;
-        TRAFO_POS_ORDER.forEach((p, ri) => {
-            const top = rowTop[ri];
-            it.push({ t: 'text', text: 'TR' + s.trafo + ' ' + TRAFO_POS_LABEL[p], x: 0.03 * W, y: top * H, w: 0.6 * W, h: 0.035 * H, pt: 15 * fs, bold: true, color: '000000', align: 'left' });
-            const R = s.rows[p], y0 = (top + 0.037) * H;
-            if (R.vis) { const b = fit(R.vis, 0.03 * W, y0, 0.17 * W, imgH * H); it.push({ t: 'image', data: R.vis.data, fmt: 'JPEG', x: b.x, y: b.y, w: b.w, h: b.h }); }
-            s.dates.forEach((d, ci) => {
-                const c = R.cells[d]; if (!c) return;
-                const b = fit(c, colX[ci] * W, y0, colW * W, imgH * H);
-                it.push({ t: 'image', data: c.data, fmt: 'JPEG', x: b.x, y: b.y, w: b.w, h: b.h });
-            });
-        });
-        const yl = 0.842 * H, hl = 0.04 * H;
-        it.push({ t: 'text', text: 'Visible Light Image', x: 0.03 * W, y: yl, w: 0.17 * W, h: hl, pt: 12 * fs, bold: true, color: '000000', align: 'center', highlight: 'FFFF00' });
-        s.dates.forEach((d, ci) => {
-            const mw = s.mw[d];
-            const txt = capLongDate(d) + (mw != null && !isNaN(mw) ? '- ' + Math.round(mw) + ' MW' : '');
-            it.push({ t: 'text', text: txt, x: colX[ci] * W, y: yl, w: colW * W, h: hl, pt: 12 * fs, bold: true, color: '000000', align: 'center', highlight: 'FFFF00' });
-        });
-        it.push({ t: 'text', text: TRAFO_FOOTER, x: 0.03 * W, y: 0.915 * H, w: 0.8 * W, h: 0.05 * H, pt: 18 * fs, bold: true, color: 'FF0000', align: 'left' });
-        [BRAND_RED, BRAND_YELLOW, BRAND_BLACK].forEach((col, i) => rect(i / 3, 0.984, 1 / 3, 0.016, col));
-        return it;
-    }
-
     // ==================== INPUT DATA HARIAN (tulis ke sheet Data 2026/2025 per tanggal) ====================
     const INPUT_ROLES = ['admin', 'engineer', 'supervisor'];   // harus sama dengan INPUT_ROLES di Code.gs
     let inputHeaders = [];        // [{col, letter, title}] hanya kolom yang punya judul
+    let inputAllHeaders = [];     // semua kolom (termasuk yang judulnya kosong), dengan judul asli di baris 1 (raw)
     let inputDateCol = 0;
     let inputNoteFrom = 9999;     // kolom setelah SIDEWALL = catatan (kotak teks lebih besar)
     let inputOriginal = {};       // nilai awal saat "Muat data tanggal ini" (untuk mendeteksi sel yang diubah)
@@ -2636,7 +2440,9 @@
         inputStatus('Memuat daftar kolom dari sheet "' + inputSheetName() + '"...');
         try {
             const j = await inputApi({ action: 'inputHeaders', sheet: inputSheetName() });
+            inputAllHeaders = j.headers;
             inputHeaders = j.headers.filter(h => h.title);          // judul kosong -> tidak ditampilkan
+            inputRefreshTemplateInfo();
             inputDateCol = j.dateCol;
             const sw = inputHeaders.find(h => /^sidewall$/i.test(h.title));
             inputNoteFrom = sw ? sw.col : 9999;
@@ -2700,87 +2506,130 @@
         if (!isNaN(t)) { const d = new Date(t); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
         return '';
     }
-    function inputNormHeader(s){ return String(s == null ? '' : s).replace(/\s+/g, ' ').trim().toLowerCase(); }
-    // kolom lanjutan (judul kosong) diberi judul otomatis, sama seperti inputHeaders di Code.gs
-    function inputSourceTitles(hr){
-        const out = []; let lastIdx = -1, lastTitle = '';
-        hr.forEach((c, i) => {
-            let t = inputNormHeader(c);
-            if (t) { lastIdx = i; lastTitle = t; }
-            else if (lastIdx >= 0 && i - lastIdx <= 6) t = lastTitle + ' #' + (i - lastIdx + 1);
-            out.push(t);
-        });
-        return out;
+    // ---- Pola kolom file sumber ----
+    // Kolom yang disembunyikan di Excel tidak ikut tersalin, sehingga urutan kolom tempelan berbeda dari sheet. Aplikasi mencocokkan
+    // tiap kolom tempelan ke kolom sheet lewat JUDUL (bukan posisi), memakai pola judul sumber: baris judul yang ikut dicopy,
+    // atau pola tersimpan (bawaan di bawah, bisa diganti dengan menempel baris judul sekali saja).
+    const INPUT_SOURCE_DEFAULT = (function(){
+        const seq = (p, a, b) => { const o = []; for (let i = a; i <= b; i++) o.push(p + i); return o; };
+        return [].concat(
+            ['Date','Daily Power Consumption','Power Average','Running Average Power MTD','Delay Time','Operating Time','PERCENTAGE COMPARE FULL POWER (%)','Night cal','Day cal','Afternoon cal','Daily Calcine Consume','GHE','Night Scrap 1','Morning Scrap 2','Afternoon Scrap 3','Recycle Scrap'],
+            seq('elec ', 1, 6),
+            ['Total Pasta','Daily Consume','Average Elec Cons','North Skim','South Skim','Total Skim','Time Slag','Level Slag','NICKEL LOSS AVERAGE','S/M RATIO','%Fe Average'],
+            seq('Skim ', 1, 8),
+            ['Skimming Temp avg','Slag clamp Night','Slag Clamp Day','Slag Clamp Afternoon','Slag Reclaim','Skimming Hours','Skimming Rate','North Tap','South Tap','Total Tapp','TIME FeNi','LEVEL FENI'],
+            seq('Tap depth ', 1, 4), seq('material tap ', 1, 4), seq('temp tap ', 1, 4), ['Tapping temp avg'], seq('Temp Shot ', 1, 4), ['Shotting temp avg'],
+            seq('Nickel Grade ', 1, 5), ['AVERAGE Nickel Grade'], seq('FeNi Packed ', 1, 5), ['TOTAL FeNi Packed','TARGET FeNi Packed','PERCENT Packed'],
+            seq('Nickel ', 1, 5),
+            ['TOTAL Nickel','TARGET Nickel','PERCENT Nickel','TOTAL FENI PACKAGED','AVERAGE FENI PACKAGED','TOTAL NI PACKAGED','AVERAGE NI PACKAGED','SCRAP GENERATION','Vertical Baker & Product Drying (ton)','Furnace Area (ton)','Total (KL)','Diesel Total MTD','Diesel Avg Harian','BOTTOM','FREEBOARD','SIDEWALL','2','5','6','7','8'],
+            seq('', 1, 10),
+            ['BOTTOM (Lowest to Highest)','FREEBOARD (Lowest to Highest)','SIDEWALL (Lowest to Highest)','MOLTEN FeNi tonage (ton)','% slag compare calcine','Dry Slag','Skimming Rate (Dry basis)','% slag compare calcine (dry)','POWER (MW)','Plant Availability (PA)','UTL','Capacity Factor (CF)','Operating Factor (OF)','Avg Month','%Ni RKP','%build up','persen feni out/plan','Temp LF (oC)','','','','Avg Temp LF (oC)']
+        );
+    })();
+    function inputGetTemplate(){
+        try { const a = JSON.parse(localStorage.getItem('rkef_src_template') || 'null'); if (Array.isArray(a) && a.length > 20) return { titles: a, custom: true }; } catch (e) {}
+        return { titles: INPUT_SOURCE_DEFAULT, custom: false };
     }
-    // pencocokan berurutan (LCS): tahan terhadap kolom yang hilang/tambahan & nama kembar
-    function inputAlign(sheetT, srcT){
-        const n = sheetT.length, m = srcT.length;
-        const dp = Array.from({ length: n + 1 }, () => new Uint16Array(m + 1));
-        for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--)
-            dp[i][j] = (sheetT[i] && sheetT[i] === srcT[j]) ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
-        const map = new Map(); let i = 0, j = 0;
+    function inputRefreshTemplateInfo(){
+        const t = inputGetTemplate(), el = document.getElementById('inputPatternInfo');
+        if (el) el.textContent = 'Pola kolom sumber tersimpan: ' + t.titles.length + ' kolom (' + (t.custom ? 'dari baris judul yang terakhir ditempel' : 'bawaan') + ')';
+    }
+    function inputResetTemplate(){ try { localStorage.removeItem('rkef_src_template'); } catch (e) {} inputRefreshTemplateInfo(); inputStatus('Pola kolom sumber dikembalikan ke bawaan.'); }
+    // Cocokkan dua urutan judul (urutan dipertahankan, kolom yang tidak ada di salah satu sisi dilewati). Mengembalikan indeks kolom sheet untuk tiap kolom sumber (-1 = tak ada padanan).
+    function inputAlign(srcNorm, sheetNorm){
+        const n = srcNorm.length, m = sheetNorm.length, w = a => (a === '' ? 0.1 : 1);
+        const f = Array.from({ length: n + 1 }, () => new Float32Array(m + 1));
+        for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) {
+            let best = Math.max(f[i + 1][j], f[i][j + 1]);
+            if (srcNorm[i] === sheetNorm[j]) best = Math.max(best, f[i + 1][j + 1] + w(srcNorm[i]));
+            f[i][j] = best;
+        }
+        const map = new Array(n).fill(-1);
+        let i = 0, j = 0;
         while (i < n && j < m) {
-            if (sheetT[i] && sheetT[i] === srcT[j]) { map.set(i, j); i++; j++; }
-            else if (dp[i + 1][j] >= dp[i][j + 1]) i++; else j++;
+            if (srcNorm[i] === sheetNorm[j] && Math.abs(f[i][j] - (f[i + 1][j + 1] + w(srcNorm[i]))) < 1e-4) { map[i] = j; i++; j++; }   // padanan paling awal
+            else if (f[i + 1][j] >= f[i][j + 1]) i++;
+            else j++;
         }
         return map;
     }
     function inputFillFromPaste(){
-        if (!inputHeaders.length) { inputStatus('Daftar kolom belum dimuat.', 'text-danger'); return; }
+        if (!inputAllHeaders.length) { inputStatus('Daftar kolom belum dimuat.', 'text-danger'); return; }
         const rows = inputParseTsv(document.getElementById('inputPaste').value);
-        const hdrIdx = rows.findIndex(r => /^date$/i.test(String(r[0] || '').trim()));
-        const hdr = hdrIdx >= 0 ? rows[hdrIdx] : null;
-        const dataRows = rows.filter((r, i) => i !== hdrIdx);
-        if (!dataRows.length) { inputStatus('Tidak ada baris data pada tempelan' + (hdr ? ' (header terbaca, tapi baris datanya belum ikut dicopy).' : '.'), 'text-danger'); return; }
+        if (!rows.length) { inputStatus('Tidak ada data pada tempelan.', 'text-danger'); return; }
+        const hasHeader = normKey(rows[0][0]) === 'date';
+        const headerRow = hasHeader ? rows[0] : null;
+        const dataRows = hasHeader ? rows.slice(1) : rows;
+        if (hasHeader) {
+            try { localStorage.setItem('rkef_src_template', JSON.stringify(headerRow.map(t => String(t == null ? '' : t).replace(/\s*[\r\n]+\s*/g, ' ').trim()))); } catch (e) {}
+            inputRefreshTemplateInfo();
+        }
+        if (!dataRows.length) { inputStatus('Pola kolom sumber disimpan dari baris judul (' + headerRow.length + ' kolom). Sekarang tempel baris datanya (boleh bersama baris judul).'); return; }
         const r = dataRows[0];
         const dmy = document.getElementById('inputDateOrder').value === 'dmy';
-        inputPasteCols = new Set();
-        let filled = 0, shiftNote = '', missing = [], lost = [];
-
-        if (hdr) {   // ---- MODE HEADER: cocokkan per nama kolom ----
-            const srcT = inputSourceTitles(hdr);
-            const map = inputAlign(inputHeaders.map(h => inputNormHeader(h.title)), srcT);
-            const used = new Set();
-            inputHeaders.forEach((h, k) => {
-                const el = document.querySelector('#inputGrid .inp-cell[data-col="' + h.col + '"]');
-                if (!el) return;
-                el.value = ''; el.placeholder = ''; el.classList.remove('inp-formula');
-                const si = map.get(k);
-                if (si === undefined) { missing.push(h.title); return; }   // tidak ada di tempelan -> dibiarkan
-                used.add(si); inputPasteCols.add(h.col);
-                let v = r[si] == null ? '' : String(r[si]).trim();
-                if (/^#/.test(v)) v = '';
-                if (h.col === inputDateCol) v = inputParseDate(v, dmy);
-                el.value = v; if (v !== '') filled++;
+        const mode = document.getElementById('inputHiddenCol').value;
+        const sheetNorm = inputAllHeaders.map(h => normKey(h.raw));
+        let map, how, srcTitles;
+        if (hasHeader) { srcTitles = headerRow; map = inputAlign(headerRow.map(normKey), sheetNorm); how = 'dicocokkan dari baris judul yang ikut tertempel'; }
+        else {
+            const tpl = inputGetTemplate().titles;
+            if (mode === 'direct') { srcTitles = null; map = r.map((_, i) => (i < inputAllHeaders.length ? i : -1)); how = 'posisi kolom sama persis dengan sheet'; }
+            else if (mode === 'template' || r.length === tpl.length) { srcTitles = tpl; map = inputAlign(tpl.map(normKey), sheetNorm); how = 'dicocokkan memakai pola kolom sumber (' + tpl.length + ' kolom)'; }
+            else if (r.length === inputAllHeaders.length) { srcTitles = null; map = r.map((_, i) => i); how = 'jumlah kolom sama dengan sheet'; }
+            else {
+                inputStatus('<span class="text-danger">Jumlah kolom tempelan (' + r.length + ') tidak cocok dengan pola sumber (' + tpl.length + ') maupun sheet (' + inputAllHeaders.length + ').</span> Cara paling aman: copy <b>baris judul + baris data</b> sekaligus, aplikasi mencocokkan kolomnya otomatis lewat judul.', 'text-danger');
+                return;
+            }
+        }
+        const valueByCol = {}, covered = new Set(), lost = [];
+        for (let i = 0; i < Math.min(r.length, map.length); i++) {
+            const col = map[i], v = r[i] == null ? '' : String(r[i]).trim();
+            if (col >= 0) { valueByCol[col] = v; covered.add(col); }
+            else if (v !== '') lost.push(srcTitles ? String(srcTitles[i]).replace(/\s+/g, ' ').trim() || ('kolom ' + (i + 1)) : 'kolom ' + (i + 1));
+        }
+        inputPasteCols = new Set(covered);
+        // kolom duplikat tak terpakai (mis. "8" kedua di DM) selalu dikosongkan agar sisa data lama hilang
+        sheetNorm.forEach((nk, c) => { if (!covered.has(c) && nk === '8' && c > 0 && sheetNorm[c - 1] === '8') { inputPasteCols.add(c); valueByCol[c] = ''; } });
+        let filled = 0;
+        inputHeaders.forEach(h => {
+            const el = document.querySelector('#inputGrid .inp-cell[data-col="' + h.col + '"]');
+            if (!el) return;
+            let v = valueByCol[h.col] === undefined ? '' : valueByCol[h.col];
+            if (/^#/.test(v)) v = '';                              // #DIV/0!, #VALUE!, dst. tidak dipakai
+            if (h.col === inputDateCol) v = inputParseDate(v, dmy);
+            el.value = v; el.placeholder = ''; el.classList.remove('inp-formula');
+            if (v !== '') filled++;
+        });
+        // Ratakan teks suhu Lowest–Highest berdasarkan ISInya ke kolom berjudul masing-masing (pengaman tambahan)
+        const tcols = {};
+        inputHeaders.forEach(hh => {
+            const nk = normKey(hh.title);
+            if (nk === 'bottomlowesttohighest') tcols.bottom = hh.col;
+            else if (nk === 'freeboardlowesttohighest') tcols.freeboard = hh.col;
+            else if (nk === 'sidewalllowesttohighest') tcols.sidewall = hh.col;
+        });
+        if (Object.keys(tcols).length === 3) {
+            const found = {};
+            r.forEach(cell => { const v = String(cell == null ? '' : cell).trim(); if (TEMP_RANGE_RE.test(v)) { const kd = tempRangeKind(v); if (kd && !found[kd]) found[kd] = v; } });
+            const tcolSet = Object.keys(tcols).map(k => tcols[k]);
+            inputHeaders.forEach(hh => {
+                const el = document.querySelector('#inputGrid .inp-cell[data-col="' + hh.col + '"]');
+                if (el && tcolSet.indexOf(hh.col) < 0 && TEMP_RANGE_RE.test(el.value.trim())) el.value = '';
             });
-            r.forEach((c, si) => { if (!used.has(si) && String(c).trim() !== '' && srcT[si]) lost.push(srcT[si]); });
-            shiftNote = ' (dicocokkan per nama header)';
-        } else {     // ---- MODE LAMA (tanpa header): berdasarkan posisi ----
-            const hiddenMode = document.getElementById('inputHiddenCol').value;
-            const shift = hiddenMode === 'skip' ? true : (hiddenMode === 'none' ? false : (r.length === INPUT_FULL_COLS - 1 || (r.length < INPUT_FULL_COLS - 1 && r.length > INPUT_SKIP_IDX)));
-            inputHeaders.forEach(h => {
-                const el = document.querySelector('#inputGrid .inp-cell[data-col="' + h.col + '"]');
+            Object.keys(tcols).forEach(kd => {
+                const el = document.querySelector('#inputGrid .inp-cell[data-col="' + tcols[kd] + '"]');
                 if (!el) return;
-                let si = h.col, blankByShift = false;
-                if (shift) { if (h.col === INPUT_SKIP_IDX) blankByShift = true; else if (h.col > INPUT_SKIP_IDX) si = h.col - 1; }
-                if (blankByShift || si < r.length) inputPasteCols.add(h.col);
-                let v = (blankByShift || r[si] == null) ? '' : String(r[si]).trim();
-                if (/^#/.test(v)) v = '';
-                if (h.col === inputDateCol) v = inputParseDate(v, dmy);
-                el.value = v; el.placeholder = ''; el.classList.remove('inp-formula');
-                if (v !== '') filled++;
+                if (found[kd] !== undefined) el.value = found[kd];
+                else if (TEMP_RANGE_RE.test(el.value.trim()) && tempRangeKind(el.value) !== kd) el.value = '';
+                inputPasteCols.add(tcols[kd]);
             });
-            shiftNote = shift ? ' (kolom DM sumber tersembunyi → digeser otomatis)' : '';
         }
         inputOriginal = {}; inputLoadedKey = ''; inputFromPaste = true;
         const d = document.getElementById('inputDate').value;
-        inputStatus(filled + ' kolom terisi dari tempelan' + shiftNote + '.' +
-            (d ? ' Tanggal terbaca: <b>' + thermalEsc(d) + '</b> — cek, lalu klik "Simpan ke sheet".' : ' <span class="text-warning">Tanggal tidak terbaca, isi manual.</span>') +
-            (missing.length ? '<br><span class="text-secondary">Tidak ada di tempelan (sel di sheet tidak diubah): ' + thermalEsc(missing.join(', ')) + '.</span>' : '') +
-            (lost.length ? '<br><span class="text-warning">Ada di tempelan tapi tidak ketemu di sheet (tidak disimpan): ' + thermalEsc(lost.join(', ')) + '.</span>' : '') +
-            (dataRows.length > 1 ? '<br><span class="text-warning">Tempelan berisi ' + dataRows.length + ' baris data; hanya yang pertama dipakai.</span>' : ''));
+        inputStatus(filled + ' kolom terisi (' + how + ').' + (d ? ' Tanggal terbaca: <b>' + thermalEsc(d) + '</b> — cek, lalu klik "Simpan ke sheet".' : ' <span class="text-warning">Tanggal tidak terbaca, isi manual.</span>') +
+            (lost.length ? ' <span class="text-warning">Kolom sumber tanpa padanan di sheet (datanya tidak dipakai): ' + thermalEsc(lost.slice(0, 6).join(', ')) + (lost.length > 6 ? ' dst.' : '') + '</span>' : '') +
+            (dataRows.length > 1 ? ' <span class="text-warning">(Tempelan berisi ' + dataRows.length + ' baris; hanya baris pertama yang dipakai.)</span>' : ''));
     }
-
     async function inputLoadRow(){
         const date = document.getElementById('inputDate').value;
         if (!date) { inputStatus('Isi tanggal dulu.', 'text-danger'); return; }
@@ -2854,6 +2703,10 @@
     let capBatchId = '';                 // satu batch per sekali simpan; dipertahankan saat mengulang supaya tidak dobel
     const CAPTURE_ROLES = ['engineer'];   // harus sama dengan CAPTURE_ROLES di Code.gs
     function captureCanUse(){ return !!(currentUser && CAPTURE_ROLES.indexOf(currentUser.role) >= 0); }
+    // Label/judul yang terlanjur berupa teks tanggal panjang bawaan JavaScript/Sheets ("Sat Apr 11 2026 00:00:00 GMT+0800 (...)") dibuang
+    function capIsJunkText(t){ return /GMT[+-]\d{4}|\(Waktu |\(\w+ (?:Standard|Daylight) Time\)|^\w{3} \w{3} \d{1,2} \d{4}/.test(String(t || '')); }
+    function capCleanText(t){ return capIsJunkText(t) ? '' : t; }
+    function capCleanLabel(label, date){ return (!label || capIsJunkText(label)) ? capLongDate(date) + ' (24 h)' : label; }
     function capLongDate(d){ const p = d.split('-'); return (+p[2]) + ' ' + CAP_MONTHS[+p[1] - 1] + ' ' + p[0]; }
     function capStatus(html, cls){ const el = document.getElementById('capStatus'); if (el) { el.className = 'small mt-2 ' + (cls || 'text-secondary'); el.innerHTML = html; } }
     // Unduh foto thermal/capture untuk tanggal yang sedang dilihat di latar belakang, supaya saat Export sudah siap (tersimpan di cache)
@@ -2870,11 +2723,11 @@
     }
     function capSyncDate(d){ const el = document.getElementById('capDate'); if (el && !el.value) { el.value = d; capRefreshSaved(); } }
 
-    function capBlobToJpeg(blob, maxW){
+    function capBlobToJpeg(blob){
         return new Promise((res, rej) => {
             const u = URL.createObjectURL(blob), im = new Image();
             im.onload = () => {
-                const s = Math.min(1, (maxW || 1600) / im.naturalWidth);
+                const s = Math.min(1, 1600 / im.naturalWidth);
                 const c = document.createElement('canvas');
                 c.width = Math.round(im.naturalWidth * s); c.height = Math.round(im.naturalHeight * s);
                 const g = c.getContext('2d');
@@ -2914,7 +2767,8 @@
         if (!capDraft.length) { alert('Belum ada gambar yang ditempel.'); return; }
         const layout = document.getElementById('capLayout').value;
         const title = document.getElementById('capTitle').value.trim();
-        const label = document.getElementById('capLabel').value.trim() || (capLongDate(date) + ' (24 h)');
+        const typedLabel = document.getElementById('capLabel').value.trim();
+        const label = (typedLabel && !capIsJunkText(typedLabel)) ? typedLabel : (capLongDate(date) + ' (24 h)');
         if (!capBatchId) capBatchId = 'b' + Date.now().toString(36);
         const batch = capBatchId;
         let ok = 0;
@@ -2992,7 +2846,7 @@
         await Promise.all(Array.from({ length: 6 }, worker));
         const batches = [];
         const byBatch = {};
-        rows.forEach(r => { if (!imgs[r.fileId]) return; if (!byBatch[r.batch]) { byBatch[r.batch] = { layout: r.layout, title: r.title, label: r.label, images: [] }; batches.push(byBatch[r.batch]); } byBatch[r.batch].images.push(imgs[r.fileId]); });
+        rows.forEach(r => { if (!imgs[r.fileId]) return; if (!byBatch[r.batch]) { byBatch[r.batch] = { layout: r.layout, title: capCleanText(r.title), label: capCleanLabel(r.label, r.date), images: [] }; batches.push(byBatch[r.batch]); } byBatch[r.batch].images.push(imgs[r.fileId]); });
         const slides = [];
         batches.forEach(b => {
             if (b.layout === 'combine') slides.push({ title: b.title, label: b.label, images: b.images });
@@ -3020,6 +2874,259 @@
             const r = Math.floor(i / cols), c = i % cols, sc = Math.min(cw / im.w, ch / im.h), w = im.w * sc, h = im.h * sc;
             it.push({ t: 'image', data: im.data, fmt: 'JPEG', x: left + c * (cw + gap * W) + (cw - w) / 2, y: top + r * (ch + gap * H) + (ch - h) / 2, w, h });
         });
+        return it;
+    }
+
+    // ==================== FCE MONITORING TRAFO / CABLE 33 KV ====================
+    // Laporan foto thermal (Word) berisi judul foto "TR1 INPUT DS 33 KV", foto thermal + skala suhu, dan foto Visible Light.
+    // Judul dibaca untuk menentukan trafo (1/2/3) dan titiknya; hasilnya disimpan ke Drive + sheet "Trafo" dan menjadi 1 slide per trafo.
+    const TRAFO_ROLES = ['admin', 'engineer', 'supervisor'];   // harus sama dengan TRAFO_ROLES di Code.gs
+    function trafoCanUse(){ return !!(currentUser && TRAFO_ROLES.indexOf(currentUser.role) >= 0); }
+    const TRAFO_POINTS = [
+        { key: 'INPUT_DS', label: 'INPUT DS 33KV' }, { key: 'OUTPUT_DS', label: 'OUTPUT DS 33KV' },
+        { key: 'INPUT_TRAFO', label: 'INPUT TRANSFORMER 33KV' }, { key: 'OUTPUT_TRAFO', label: 'OUTPUT TRANSFORMER 33KV' }
+    ];
+    const TRAFO_NOTE = 'Temperature Parameter Trafo Cable <70°C';
+    let trafoDraft = [];
+    function trafoDefaultTitle(n){ return 'FCE MONITORING TRAFO ' + n + ', CABLE 33 KV, BREAKER'; }
+    function trafoTitle(n){ const el = document.getElementById('trafoTitle' + n); return (el && el.value.trim()) || trafoDefaultTitle(n); }
+    function trafoTitlesLoad(){
+        try { const a = JSON.parse(localStorage.getItem('rkef_trafo_titles') || 'null'); [1, 2, 3].forEach(n => { const el = document.getElementById('trafoTitle' + n); if (el) el.value = (a && a[n - 1]) || trafoDefaultTitle(n); }); } catch (e) {}
+    }
+    function trafoTitlesSave(){ try { localStorage.setItem('rkef_trafo_titles', JSON.stringify([1, 2, 3].map(n => document.getElementById('trafoTitle' + n).value))); } catch (e) {} }
+    function trafoStatus(html, cls){ const el = document.getElementById('trafoStatus'); if (el) { el.className = 'small mt-2 ' + (cls || 'text-secondary'); el.innerHTML = html; } }
+
+    // "TR1 INPUT DS 33 KV" -> {trafo:'1', point:'INPUT_DS'} ; "TR2 OUTPUT TRAFO 33 KV" -> {trafo:'2', point:'OUTPUT_TRAFO'}
+    function trafoParseTitle(lines){
+        let found = null;
+        lines.forEach(l => { const m = String(l).match(/TR\s*([123])\s*[-_ ]*\s*(INPUT|OUTPUT|IN|OUT)\s+(DS|TRAFO|TRANSFORMER|TRANSFORMATOR|TRF)\b/i); if (m) found = m; });
+        if (!found) return null;
+        return { trafo: found[1], point: (/^in/i.test(found[2]) ? 'INPUT' : 'OUTPUT') + '_' + (/^ds$/i.test(found[3]) ? 'DS' : 'TRAFO') };
+    }
+    // Pecah daftar gambar satu foto menjadi: foto thermal (+ skala suhu) dan foto visible light
+    function trafoClassify(items){      // items: [{it, w, h}]  (w,h = ukuran tampil di dokumen bila ada, jika tidak ukuran asli gambar)
+        const area = o => o.w * o.h, maxA = Math.max.apply(null, items.map(area).concat([1]));
+        const scales = items.filter(o => o.h / o.w > 1.4 || area(o) < maxA * 0.15);
+        const main = items.filter(o => scales.indexOf(o) < 0);
+        return { thermal: main.length ? [main[0]].concat(scales) : [], visible: main.length > 1 ? main[1] : null };
+    }
+    function trafoExtractRecords(docXml, rels, dmyDefault){
+        const doc = new DOMParser().parseFromString(docXml, 'application/xml');
+        const body = doc.getElementsByTagName('w:body')[0];
+        const records = [];
+        let cur = null, buf = [];
+        Array.from(body.children).forEach(el => {
+            const imgs = thermalElementImages(el, rels), lines = thermalElementLines(el);
+            if (imgs.length) {
+                if (cur) cur.lines.push(...buf);                    // teks setelah foto sebelumnya
+                const pre = buf.slice();
+                buf = [];
+                if (!cur || pre.length) { if (cur) records.push(cur); cur = { imgs: [], lines: [], pre: pre.concat(lines) }; }
+                cur.imgs.push(...imgs);
+                buf.push(...lines);
+            } else buf.push(...lines);
+        });
+        if (cur) { cur.lines.push(...buf); records.push(cur); }
+        return records.map(r => {
+            const meta = thermalReadMeta(r, dmyDefault), t = trafoParseTitle(r.pre) || { trafo: '', point: '' };
+            return { imgs: r.imgs, fileName: meta.fileName, date: meta.date, rawDate: meta.rawDate, trafo: t.trafo, point: t.point, title: r.pre.slice(-1)[0] || '' };
+        });
+    }
+    async function trafoComposeRecord(zip, rec){
+        const loaded = [];
+        for (const it of rec.imgs) {
+            const f = zip.file(it.path);
+            if (!f) continue;
+            try { const { im, u } = await thermalLoadImage(await f.async('blob')); loaded.push({ it, w: it.cx || im.naturalWidth, h: it.cy || im.naturalHeight, nat: im.naturalWidth * im.naturalHeight }); URL.revokeObjectURL(u); } catch (e) {}
+        }
+        if (!loaded.length) throw new Error('gambar tidak bisa dibaca (kemungkinan format EMF/WMF)');
+        const maxNat = Math.max.apply(null, loaded.map(o => o.nat));
+        const items = loaded.filter(o => o.nat >= maxNat * 0.01);
+        const cls = trafoClassify(items);
+        const out = { thermalUrl: '', visibleUrl: '' };
+        if (cls.thermal.length) out.thermalUrl = await thermalCompose(zip, cls.thermal.map(o => o.it));
+        if (cls.visible) out.visibleUrl = await thermalCompose(zip, [cls.visible.it]);
+        return out;
+    }
+    async function trafoHandleFiles(input){
+        const files = Array.from(input.files || []);
+        if (!files.length) return;
+        const dmy = document.getElementById('trafoDateOrder').value === 'dmy';
+        trafoDraft = [];
+        const warns = [];
+        for (const file of files) {
+            trafoStatus('Membaca ' + thermalEsc(file.name) + '...');
+            try {
+                const buf = await file.arrayBuffer(), u8 = new Uint8Array(buf);
+                if (!(u8[0] === 0x50 && u8[1] === 0x4B)) { warns.push(file.name + ': bukan .docx (simpan dulu sebagai Word Document .docx).'); continue; }
+                const zip = await JSZip.loadAsync(buf);
+                const docF = zip.file('word/document.xml'), relF = zip.file('word/_rels/document.xml.rels');
+                if (!docF || !relF) { warns.push(file.name + ': struktur dokumen tidak dikenali.'); continue; }
+                const recs = trafoExtractRecords(await docF.async('string'), thermalParseRels(await relF.async('string')), dmy);
+                if (!recs.length) warns.push(file.name + ': tidak ditemukan foto di dokumen.');
+                for (const r of recs) {
+                    try { Object.assign(r, await trafoComposeRecord(zip, r)); } catch (e) { r.error = e.message; }
+                    r.imgs = null; r.saved = {};
+                    trafoDraft.push(r);
+                }
+            } catch (e) { warns.push(file.name + ': ' + e.message); }
+        }
+        input.value = '';
+        trafoRenderDraft();
+        const unk = trafoDraft.filter(r => !r.trafo).length;
+        trafoStatus((trafoDraft.length ? trafoDraft.length + ' foto terbaca — cek trafo, titik, dan tanggal, lalu klik "Simpan ke GSheet".' : 'Tidak ada foto yang terbaca.') +
+            (unk ? '<br><span class="text-warning">' + unk + ' foto judulnya tidak dikenali (pola "TR1 INPUT DS 33 KV"), pilih trafo & titik secara manual.</span>' : '') +
+            (warns.length ? '<br><span class="text-warning">' + warns.map(thermalEsc).join('<br>') + '</span>' : ''));
+    }
+    function trafoRenderDraft(){
+        const box = document.getElementById('trafoDraftBox');
+        if (!trafoDraft.length) { box.innerHTML = ''; return; }
+        const optT = ['<option value="">— trafo —</option>'].concat([1, 2, 3].map(n => '<option value="' + n + '">Trafo ' + n + '</option>')).join('');
+        const optP = ['<option value="">— titik —</option>'].concat(TRAFO_POINTS.map(p => '<option value="' + p.key + '">' + p.label + '</option>')).join('');
+        let h = '<div class="table-responsive"><table class="table table-sm align-middle"><thead><tr><th></th><th>Thermal</th><th>Visible</th><th>File / judul di dokumen</th><th>Tanggal</th><th>Trafo</th><th>Titik</th></tr></thead><tbody>';
+        trafoDraft.forEach((r, i) => {
+            const done = !!(r.thermalUrl || r.visibleUrl) && (r.thermalUrl ? r.saved.thermal : true) && (r.visibleUrl ? r.saved.visible : true);
+            h += '<tr><td><input type="checkbox" class="trafo-chk" data-i="' + i + '" ' + (r.error || done ? 'disabled' : 'checked') + '></td>' +
+                '<td>' + (r.thermalUrl ? '<img src="' + r.thermalUrl + '" style="height:60px;border-radius:4px;">' : '<span class="text-danger small">' + thermalEsc(r.error || '-') + '</span>') + '</td>' +
+                '<td>' + (r.visibleUrl ? '<img src="' + r.visibleUrl + '" style="height:60px;border-radius:4px;">' : '-') + ' <button type="button" class="btn btn-sm btn-outline-secondary py-0" onclick="trafoSwap(' + i + ')" title="Tukar foto thermal & visible bila terbalik">⇄</button></td>' +
+                '<td class="small">' + thermalEsc(r.fileName || '-') + (done ? ' <span class="text-success">✓ tersimpan</span>' : '') + '<br><span class="text-secondary">' + thermalEsc(r.title) + '</span></td>' +
+                '<td><input type="date" class="form-control form-control-sm trafo-date" data-i="' + i + '" value="' + thermalEsc(r.date) + '" style="width:150px"></td>' +
+                '<td><select class="form-select form-select-sm trafo-trafo" data-i="' + i + '" style="width:110px">' + optT + '</select></td>' +
+                '<td><select class="form-select form-select-sm trafo-point" data-i="' + i + '" style="width:220px">' + optP + '</select></td></tr>';
+        });
+        box.innerHTML = h + '</tbody></table></div>';
+        box.querySelectorAll('.trafo-trafo').forEach(s => { s.value = trafoDraft[+s.dataset.i].trafo || ''; });
+        box.querySelectorAll('.trafo-point').forEach(s => { s.value = trafoDraft[+s.dataset.i].point || ''; });
+    }
+    function trafoSwap(i){ const r = trafoDraft[i]; const t = r.thermalUrl; r.thermalUrl = r.visibleUrl; r.visibleUrl = t; r.saved = {}; trafoRenderDraft(); }
+    async function trafoSaveDraft(){
+        const box = document.getElementById('trafoDraftBox');
+        const jobs = [];
+        box.querySelectorAll('.trafo-chk').forEach(chk => {
+            if (!chk.checked) return;
+            const i = +chk.dataset.i, r = trafoDraft[i];
+            const date = box.querySelector('.trafo-date[data-i="' + i + '"]').value, trafo = box.querySelector('.trafo-trafo[data-i="' + i + '"]').value, point = box.querySelector('.trafo-point[data-i="' + i + '"]').value;
+            if (date && trafo && point) jobs.push({ r, date, trafo, point });
+        });
+        if (!jobs.length) { alert('Belum ada foto yang siap disimpan — pastikan tanggal, trafo, dan titik sudah terisi.'); return; }
+        trafoTitlesSave();
+        let ok = 0, total = 0;
+        jobs.forEach(j => { total += (j.r.thermalUrl && !j.r.saved.thermal ? 1 : 0) + (j.r.visibleUrl && !j.r.saved.visible ? 1 : 0); });
+        uploadBusy++;
+        try {
+            for (const j of jobs) {
+                for (const kind of ['thermal', 'visible']) {
+                    const url = kind === 'thermal' ? j.r.thermalUrl : j.r.visibleUrl;
+                    if (!url || j.r.saved[kind]) continue;
+                    trafoStatus('Menyimpan ' + (ok + 1) + ' / ' + total + ' (TR' + j.trafo + ' ' + j.point + ' ' + j.date + ' ' + kind + ')...');
+                    try {
+                        const r = await authPostRetry({ action: 'trafoUpload', username: currentUser.username, token: currentUser.token, date: j.date, trafo: j.trafo, point: j.point, kind, fileName: j.r.fileName || '', slideTitle: trafoTitle(j.trafo), mime: 'image/jpeg', data: url.split(',')[1] },
+                            (n, t) => trafoStatus('Koneksi terputus, mencoba ulang ' + n + '/' + t + '...'));
+                        if (!r || !r.ok) throw new Error((r && r.message) || 'backend menolak (pastikan Code.gs sudah diperbarui)');
+                        j.r.saved[kind] = true; ok++;
+                    } catch (e) { trafoRenderDraft(); trafoStatus('<span class="text-danger">Gagal menyimpan TR' + thermalEsc(j.trafo + ' ' + j.point + ' ' + j.date) + ': ' + thermalEsc(e.message) + ' (tersimpan ' + ok + ' dari ' + total + ')</span>'); return; }
+                }
+            }
+        } finally { uploadBusy--; }
+        trafoDraft = [];
+        trafoRenderDraft();
+        trafoStatus(ok + ' gambar tersimpan ke GSheet/Drive.', 'text-success');
+        trafoRefreshSaved();
+    }
+    async function trafoRefreshSaved(){
+        const el = document.getElementById('trafoSavedBox');
+        if (!el) return;
+        try {
+            const rows = (await inputApi({ action: 'trafoList' })).rows;
+            if (!rows.length) { el.textContent = 'Belum ada foto tersimpan.'; return; }
+            const groups = {};
+            rows.forEach(r => { const k = r.trafo + '|' + r.date; (groups[k] = groups[k] || {})[r.point] = true; });
+            el.innerHTML = Object.keys(groups).sort((a, b) => (a.split('|')[1] < b.split('|')[1] ? 1 : -1)).slice(0, 14).map(k => {
+                const p = k.split('|');
+                return '<div class="mb-1"><b>TR' + thermalEsc(p[0]) + '</b> · ' + thermalEsc(p[1]) + ' — ' + TRAFO_POINTS.filter(x => groups[k][x.key]).map(x => thermalEsc(x.label) +
+                    ' <a href="#" class="text-danger" title="Hapus" onclick="trafoDelete(\'' + p[1] + '\',\'' + p[0] + '\',\'' + x.key + '\'); return false;">✕</a>').join(', ') + '</div>';
+            }).join('');
+        } catch (e) { el.textContent = 'Daftar belum bisa dimuat (' + e.message + ')'; }
+    }
+    async function trafoDelete(date, trafo, point){
+        if (!confirm('Hapus foto TR' + trafo + ' ' + point + ' tanggal ' + date + ' dari GSheet/Drive?')) return;
+        try {
+            const r = await authPost({ action: 'trafoDelete', username: currentUser.username, token: currentUser.token, date, trafo, point });
+            if (!r || !r.ok) throw new Error((r && r.message) || 'gagal menghapus');
+            trafoRefreshSaved();
+        } catch (e) { trafoStatus('<span class="text-danger">' + thermalEsc(e.message) + '</span>'); }
+    }
+    async function trafoFetchImage(id){
+        const cached = await imgCacheGet(id);
+        if (cached) return cached;
+        const j = await inputApi({ action: 'trafoImage', id });
+        const data = 'data:' + (j.mime || 'image/jpeg') + ';base64,' + j.data;
+        imgCacheSet(id, data);
+        return data;
+    }
+    const TRAFO_MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    function trafoDateLabel(d){
+        const p = d.split('-');
+        const row = (typeof rawData !== 'undefined' ? rawData : []).find(r => r.Date === d);
+        const mw = row ? getVal(row, 'power') : null;
+        return (+p[2]) + ' ' + TRAFO_MONTHS[+p[1] - 1] + ' ' + p[0] + (mw !== null && mw !== undefined ? '- ' + Math.round(mw) + ' MW' : '');
+    }
+    // Siapkan data slide per trafo: 3 tanggal terbaru (<= tanggal export), foto thermal tiap tanggal, foto visible terbaru per titik
+    async function trafoPrepareSlides(selDate){
+        let rows;
+        try { rows = (await inputApi({ action: 'trafoList' })).rows; } catch (e) { return []; }
+        const slides = [];
+        for (const tr of ['1', '2', '3']) {
+            const rs = rows.filter(r => r.trafo === tr && r.date <= selDate);
+            if (!rs.length) continue;
+            const dates = Array.from(new Set(rs.map(r => r.date))).sort().reverse().slice(0, 3).sort();   // kiri -> kanan: lama -> baru
+            const thermalRows = rs.filter(r => r.kind === 'thermal' && dates.indexOf(r.date) >= 0);
+            const vis = {};
+            rs.filter(r => r.kind === 'visible').sort((a, b) => (a.date < b.date ? 1 : -1)).forEach(r => { if (!vis[r.point]) vis[r.point] = r; });
+            const need = thermalRows.concat(Object.keys(vis).map(k => vis[k]));
+            const imgs = {};
+            let idx = 0;
+            const worker = async () => {
+                while (idx < need.length) {
+                    const r = need[idx++];
+                    try { const data = await trafoFetchImage(r.fileId); const sz = await thermalImgSize(data); if (sz) imgs[r.fileId] = { data, w: sz.w, h: sz.h }; } catch (e) {}
+                }
+            };
+            await Promise.all(Array.from({ length: 6 }, worker));
+            const points = TRAFO_POINTS.filter(p => thermalRows.some(r => r.point === p.key) || vis[p.key]).map(p => ({
+                key: p.key, label: p.label,
+                visible: vis[p.key] && imgs[vis[p.key].fileId] ? imgs[vis[p.key].fileId] : null,
+                thermal: dates.map(d => { const r = thermalRows.find(x => x.point === p.key && x.date === d); return r && imgs[r.fileId] ? imgs[r.fileId] : null; })
+            }));
+            if (!points.length) continue;
+            const titled = rs.slice().sort((a, b) => (a.date < b.date ? 1 : -1)).find(r => r.slideTitle);
+            slides.push({ trafo: tr, title: (titled && titled.slideTitle) || trafoDefaultTitle(tr), dates, labels: dates.map(trafoDateLabel), points });
+        }
+        return slides;
+    }
+    // Susunan slide meniru contoh: judul merah, tiap titik 1 baris (visible light + 3 foto thermal per tanggal), label tanggal kuning di bawah
+    function trafoBuildItems(s, W, H, fs){
+        const it = [];
+        it.push({ t: 'rect', x: 0, y: 0.035 * H, w: 0.063 * W, h: 0.07 * H, color: BRAND_RED });
+        it.push({ t: 'rect', x: 0.067 * W, y: 0.035 * H, w: 0.66 * W, h: 0.07 * H, color: 'C00000' });
+        it.push({ t: 'text', text: s.title.toUpperCase(), x: 0.075 * W, y: 0.035 * H, w: 0.645 * W, h: 0.07 * H, pt: 20 * fs, bold: true, color: 'FFFFFF', align: 'center' });
+        const lw = 0.13 * W;
+        it.push({ t: 'image', data: CERIA_LOGO_B64, fmt: 'PNG', x: 0.985 * W - lw, y: 0.015 * H, w: lw, h: lw / 3.23 });
+        const fit = (img, x, y, bw, bh) => { const sc = Math.min(bw / img.w, bh / img.h), w = img.w * sc, h = img.h * sc; it.push({ t: 'image', data: img.data, fmt: 'JPEG', x, y, w, h }); return { w, h }; };
+        const colX = ci => (0.225 + ci * 0.245) * W, imgH = 0.19 * H;
+        let lastTop = 0;
+        s.points.forEach((p, ri) => {
+            const top = (0.135 + ri * 0.255) * H;
+            lastTop = top;
+            it.push({ t: 'text', text: 'TR' + s.trafo + ' ' + p.label, x: 0.02 * W, y: top, w: 0.6 * W, h: 0.03 * H, pt: 16 * fs, bold: true, color: '000000', align: 'left' });
+            if (p.visible) fit(p.visible, 0.03 * W, top + 0.035 * H, 0.185 * W, imgH);
+            p.thermal.forEach((img, ci) => { if (img) fit(img, colX(ci), top + 0.035 * H, 0.235 * W, imgH); });
+        });
+        const ly = lastTop + 0.035 * H + imgH + 0.006 * H, lh = 0.032 * H;
+        it.push({ t: 'text', text: 'Visible Light Image', x: 0.03 * W, y: ly, w: 0.19 * W, h: lh, pt: 13 * fs, bold: true, color: '000000', highlight: 'FFFF00' });
+        s.labels.forEach((lb, ci) => it.push({ t: 'text', text: lb, x: colX(ci), y: ly, w: 0.235 * W, h: lh, pt: 13 * fs, bold: true, color: '000000', highlight: 'FFFF00' }));
+        it.push({ t: 'text', text: TRAFO_NOTE, x: 0.02 * W, y: 0.925 * H, w: 0.6 * W, h: 0.035 * H, pt: 15 * fs, bold: false, italic: true, color: 'FF0000', align: 'left' });
+        [BRAND_RED, BRAND_YELLOW, BRAND_BLACK].forEach((col, i) => it.push({ t: 'rect', x: i * W / 3, y: 0.968 * H, w: W / 3, h: 0.022 * H, color: col }));
         return it;
     }
 
@@ -3106,8 +3213,9 @@
         document.getElementById('excTempBottom').innerText = fmtNum(getVal(row, 'tempBottom'), 0);
         document.getElementById('excTempFreeboard').innerText = fmtNum(getVal(row, 'tempFreeboard'), 0);
         document.getElementById('excTempSidewall').innerText = fmtNum(getVal(row, 'tempSidewall'), 0);
-        [['excTempBottomRange', 'tempBottomRange'], ['excTempFreeboardRange', 'tempFreeboardRange'], ['excTempSidewallRange', 'tempSidewallRange']].forEach(k => {
-            const r = parseTempRange(getRawExact(row, k[1]));
+        const tempRanges = rowTempRanges(row);
+        [['excTempBottomRange', 'bottom'], ['excTempFreeboardRange', 'freeboard'], ['excTempSidewallRange', 'sidewall']].forEach(k => {
+            const r = parseTempRange(tempRanges[k[1]]);
             document.getElementById(k[0]).innerText = r ? fmtNum(r.lo.v, 1) + ' – ' + fmtNum(r.hi.v, 1) : '-';
             document.getElementById(k[0] + 'Loc').innerText = r ? '°C  ' + r.lo.loc + ' – ' + r.hi.loc : '°C';
         });
@@ -3609,10 +3717,10 @@
             { label: 'Sidewall', data: mtdRows.map(r => val(r, 'tempSidewall')), borderColor: c.accent3, yAxisID: 'y', tension: .3, spanGaps: true, pointRadius: 1.5 }
         ];
         if (document.getElementById('excTempShowRange').checked) {
-            [['Bottom', 'tempBottomRange', c.accent, 'y1'], ['Freeboard', 'tempFreeboardRange', c.accent2, 'y'], ['Sidewall', 'tempSidewallRange', c.accent3, 'y']].forEach(z => {
+            [['Bottom', 'bottom', c.accent, 'y1'], ['Freeboard', 'freeboard', c.accent2, 'y'], ['Sidewall', 'sidewall', c.accent3, 'y']].forEach(z => {
                 [['lo', 'Lowest'], ['hi', 'Highest']].forEach(w => tempDs.push({
                     label: z[0] + ' ' + w[1], borderColor: z[2], yAxisID: z[3], borderDash: [5, 4], borderWidth: 1.2, tension: .25, spanGaps: true, pointRadius: 0,
-                    data: mtdRows.map(r => { const t = parseTempRange(getRawExact(r, z[1])); return t ? t[w[0]].v : null; })
+                    data: mtdRows.map(r => { const t = parseTempRange(rowTempRanges(r)[z[1]]); return t ? t[w[0]].v : null; })
                 }));
             });
         }
@@ -4027,6 +4135,8 @@
         initLayout();
         applyTheme(currentTheme, chartMode);
         levelRangeLoad();
+        trafoTitlesLoad();
+        inputRefreshTemplateInfo();
         const initColors = chartColors();
         const cfg = { 
             responsive: true, 
