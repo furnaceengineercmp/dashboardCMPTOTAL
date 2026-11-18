@@ -759,6 +759,7 @@
           <div class="col-md-4"><label class="form-label small text-secondary mb-1 d-block">Judul slide Trafo 2</label><input type="text" id="trafoTitle2" class="form-control form-control-sm" onchange="trafoTitlesSave()"></div>
           <div class="col-md-4"><label class="form-label small text-secondary mb-1 d-block">Judul slide Trafo 3</label><input type="text" id="trafoTitle3" class="form-control form-control-sm" onchange="trafoTitlesSave()"></div>
         </div>
+        <div class="form-check small mb-1"><input class="form-check-input" type="checkbox" id="trafoReplaceVisible"><label class="form-check-label" for="trafoReplaceVisible">Ganti foto visible yang sudah tersimpan (biasanya tidak perlu, fotonya sama)</label></div>
         <div class="small text-secondary mb-2" id="trafoStatus">Pilih laporan thermal (.docx): judul foto seperti "TR1 INPUT DS 33 KV" dibaca otomatis untuk menentukan trafo dan titiknya.</div>
         <div id="trafoDraftBox"></div>
         <div class="lbl mt-3 mb-1">Foto tersimpan di GSheet (14 tanggal terakhir)</div>
@@ -2575,9 +2576,9 @@
             const tpl = inputGetTemplate().titles;
             if (mode === 'direct') { srcTitles = null; map = r.map((_, i) => (i < inputAllHeaders.length ? i : -1)); how = 'posisi kolom sama persis dengan sheet'; }
             else if (mode === 'template' || r.length === tpl.length) { srcTitles = tpl; map = inputAlign(tpl.map(normKey), sheetNorm); how = 'dicocokkan memakai pola kolom sumber (' + tpl.length + ' kolom)'; }
-            else if (r.length === inputAllHeaders.length) { srcTitles = null; map = r.map((_, i) => i); how = 'jumlah kolom sama dengan sheet'; }
+            else if (r.length <= inputAllHeaders.length) { srcTitles = null; map = r.map((_, i) => i); how = (r.length === inputAllHeaders.length ? 'jumlah kolom sama dengan sheet' : 'jumlah kolom ' + r.length + ' berbeda dari pola sumber (' + tpl.length + '), jadi dicocokkan menurut posisi kolom sheet — cek hasilnya'); }
             else {
-                inputStatus('<span class="text-danger">Jumlah kolom tempelan (' + r.length + ') tidak cocok dengan pola sumber (' + tpl.length + ') maupun sheet (' + inputAllHeaders.length + ').</span> Cara paling aman: copy <b>baris judul + baris data</b> sekaligus, aplikasi mencocokkan kolomnya otomatis lewat judul.', 'text-danger');
+                inputStatus('<span class="text-danger">Jumlah kolom tempelan (' + r.length + ') lebih banyak dari lebar sheet (' + inputAllHeaders.length + ') dan tidak cocok dengan pola sumber (' + tpl.length + ').</span> Cara paling aman: copy <b>baris judul + baris data</b> sekaligus, aplikasi mencocokkan kolomnya otomatis lewat judul.', 'text-danger');
                 return;
             }
         }
@@ -2965,6 +2966,7 @@
                 const recs = trafoExtractRecords(await docF.async('string'), thermalParseRels(await relF.async('string')), dmy);
                 if (!recs.length) warns.push(file.name + ': tidak ditemukan foto di dokumen.');
                 for (const r of recs) {
+                    if (!r.fileName && !r.trafo) continue;          // gambar logo/header dokumen, bukan foto thermal
                     try { Object.assign(r, await trafoComposeRecord(zip, r)); } catch (e) { r.error = e.message; }
                     r.imgs = null; r.saved = {};
                     trafoDraft.push(r);
@@ -3010,27 +3012,39 @@
         });
         if (!jobs.length) { alert('Belum ada foto yang siap disimpan — pastikan tanggal, trafo, dan titik sudah terisi.'); return; }
         trafoTitlesSave();
-        let ok = 0, total = 0;
-        jobs.forEach(j => { total += (j.r.thermalUrl && !j.r.saved.thermal ? 1 : 0) + (j.r.visibleUrl && !j.r.saved.visible ? 1 : 0); });
+        const haveVisible = new Set();
+        if (!document.getElementById('trafoReplaceVisible').checked) {
+            try { (await inputApi({ action: 'trafoList' })).rows.forEach(x => { if (x.kind === 'visible') haveVisible.add(x.trafo + '|' + x.point); }); } catch (e) {}
+        }
+        let ok = 0, total = 0, skippedVis = 0;
+        const seenVis = new Set(haveVisible);
+        jobs.forEach(j => {
+            if (j.r.thermalUrl && !j.r.saved.thermal) total++;
+            const k = j.trafo + '|' + j.point;
+            if (j.r.visibleUrl && !j.r.saved.visible && !seenVis.has(k)) { total++; seenVis.add(k); }
+        });
         uploadBusy++;
         try {
             for (const j of jobs) {
                 for (const kind of ['thermal', 'visible']) {
                     const url = kind === 'thermal' ? j.r.thermalUrl : j.r.visibleUrl;
                     if (!url || j.r.saved[kind]) continue;
+                    const visKey = j.trafo + '|' + j.point;
+                    if (kind === 'visible' && haveVisible.has(visKey)) { j.r.saved.visible = true; skippedVis++; continue; }   // foto visible sama, tidak perlu diupload lagi
                     trafoStatus('Menyimpan ' + (ok + 1) + ' / ' + total + ' (TR' + j.trafo + ' ' + j.point + ' ' + j.date + ' ' + kind + ')...');
                     try {
                         const r = await authPostRetry({ action: 'trafoUpload', username: currentUser.username, token: currentUser.token, date: j.date, trafo: j.trafo, point: j.point, kind, fileName: j.r.fileName || '', slideTitle: trafoTitle(j.trafo), mime: 'image/jpeg', data: url.split(',')[1] },
                             (n, t) => trafoStatus('Koneksi terputus, mencoba ulang ' + n + '/' + t + '...'));
                         if (!r || !r.ok) throw new Error((r && r.message) || 'backend menolak (pastikan Code.gs sudah diperbarui)');
                         j.r.saved[kind] = true; ok++;
+                        if (kind === 'visible') haveVisible.add(visKey);
                     } catch (e) { trafoRenderDraft(); trafoStatus('<span class="text-danger">Gagal menyimpan TR' + thermalEsc(j.trafo + ' ' + j.point + ' ' + j.date) + ': ' + thermalEsc(e.message) + ' (tersimpan ' + ok + ' dari ' + total + ')</span>'); return; }
                 }
             }
         } finally { uploadBusy--; }
         trafoDraft = [];
         trafoRenderDraft();
-        trafoStatus(ok + ' gambar tersimpan ke GSheet/Drive.', 'text-success');
+        trafoStatus(ok + ' gambar tersimpan ke GSheet/Drive.' + (skippedVis ? ' ' + skippedVis + ' foto visible dilewati karena titik itu sudah punya foto visible.' : ''), 'text-success');
         trafoRefreshSaved();
     }
     async function trafoRefreshSaved(){
@@ -3082,7 +3096,7 @@
             const dates = Array.from(new Set(rs.map(r => r.date))).sort().reverse().slice(0, 3).sort();   // kiri -> kanan: lama -> baru
             const thermalRows = rs.filter(r => r.kind === 'thermal' && dates.indexOf(r.date) >= 0);
             const vis = {};
-            rs.filter(r => r.kind === 'visible').sort((a, b) => (a.date < b.date ? 1 : -1)).forEach(r => { if (!vis[r.point]) vis[r.point] = r; });
+            rows.filter(r => r.trafo === tr && r.kind === 'visible').sort((a, b) => (a.date < b.date ? 1 : -1)).forEach(r => { if (!vis[r.point]) vis[r.point] = r; });   // foto visible sama untuk semua tanggal
             const need = thermalRows.concat(Object.keys(vis).map(k => vis[k]));
             const imgs = {};
             let idx = 0;
