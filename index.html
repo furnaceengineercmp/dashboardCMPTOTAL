@@ -431,6 +431,51 @@
         body.exporting .card, body.exporting .excel-panel{ transform:none !important; }
         body.exporting .excel-panel::before, body.exporting .excel-panel::after{ display:none; }
 
+
+        /* --- Panel kontrol mengambang (kanan): filter tanggal + ruler + zoom/callout, bisa disembunyikan --- */
+        .an-dock{ position:fixed; right:0; top:calc(var(--topbar-h, 200px) + 14px); z-index:35; display:flex; align-items:flex-start;
+            transition:transform .38s cubic-bezier(.22,.9,.3,1); }
+        .an-dock.closed{ transform:translateX(calc(100% - 46px)); }
+        .an-dock-tab{ width:46px; flex:none; border:0; cursor:pointer; color:#fff; padding:16px 0; margin-top:10px;
+            border-radius:14px 0 0 14px; font-family:var(--font-head); font-weight:700; letter-spacing:2px; font-size:.95rem;
+            writing-mode:vertical-rl; text-orientation:mixed; display:flex; align-items:center; justify-content:center; gap:10px;
+            background:linear-gradient(180deg,rgb(var(--accent-rgb)),rgba(var(--accent-rgb),.7)); box-shadow:-6px 8px 22px rgba(var(--accent-rgb),.40); }
+        .an-dock-tab:hover{ filter:brightness(1.1); }
+        .an-dock-body{ width:340px; max-height:calc(100vh - var(--topbar-h, 200px) - 34px); overflow-y:auto; padding:14px 16px 16px;
+            border-radius:16px 0 0 16px; border:1px solid rgba(var(--accent-rgb),.35); border-right:0;
+            background-color:rgba(var(--panel-rgb),.92); background-image:linear-gradient(150deg,rgba(255,255,255,.16),rgba(255,255,255,0) 50%,rgba(var(--accent-rgb),.06));
+            backdrop-filter:blur(16px) saturate(150%); -webkit-backdrop-filter:blur(16px) saturate(150%);
+            box-shadow:-10px 14px 40px rgba(0,0,0,.20), 0 0 0 1px rgba(255,255,255,.18) inset; }
+        .an-dock-head{ font-family:var(--font-head); font-weight:700; font-size:1.1rem; letter-spacing:1.5px; margin-bottom:10px; padding-bottom:8px;
+            border-bottom:2px solid rgba(var(--accent-rgb),.35); display:flex; justify-content:space-between; align-items:center; }
+        .an-dock-x{ border:0; background:rgba(var(--text-rgb),.08); color:var(--text); width:28px; height:28px; border-radius:50%; cursor:pointer; line-height:1; }
+        .an-dock-x:hover{ background:rgba(var(--accent-rgb),.25); }
+        .an-sec{ font-size:.72rem; font-weight:700; letter-spacing:1.2px; text-transform:uppercase; color:var(--text-dim); margin:12px 0 6px; }
+        .an-dock .form-control, .an-dock .form-select{ font-size:.85rem; }
+        .an-ruler{ margin:10px 2px 4px; }
+        .an-ruler-labels{ display:flex; justify-content:space-between; align-items:center; font-size:.74rem; font-weight:700; color:var(--text); }
+        .an-ruler-labels em{ font-style:normal; font-weight:600; color:rgb(var(--accent-rgb)); font-size:.7rem; }
+        .an-ruler-track{ position:relative; height:38px; margin:2px 9px 0; }
+        .an-ruler-track::before{ content:''; position:absolute; left:0; right:0; top:11px; height:6px; border-radius:6px; background:rgba(var(--text-rgb),.16); }
+        .an-ruler-ticks{ position:absolute; left:0; right:0; top:21px; height:12px; pointer-events:none;
+            background-image:repeating-linear-gradient(90deg,rgba(var(--text-rgb),.55) 0 1px,transparent 1px 10%),repeating-linear-gradient(90deg,rgba(var(--text-rgb),.28) 0 1px,transparent 1px 2%);
+            background-size:100% 100%,100% 55%; background-repeat:no-repeat,no-repeat; }
+        .an-ruler-fill{ position:absolute; top:11px; height:6px; border-radius:6px; pointer-events:none;
+            background:linear-gradient(90deg,rgb(var(--accent-rgb)),rgb(var(--accent2-rgb))); box-shadow:0 0 12px rgba(var(--accent-rgb),.6); }
+        .an-ruler-track input[type=range]{ position:absolute; left:-9px; top:4px; width:calc(100% + 18px); height:20px; margin:0; background:none;
+            -webkit-appearance:none; appearance:none; pointer-events:none; outline:none; }
+        .an-ruler-track input[type=range]::-webkit-slider-runnable-track{ background:transparent; height:20px; }
+        .an-ruler-track input[type=range]::-moz-range-track{ background:transparent; height:20px; }
+        .an-ruler-track input[type=range]::-webkit-slider-thumb{ -webkit-appearance:none; appearance:none; pointer-events:auto; width:18px; height:18px; margin-top:1px; border-radius:50%; cursor:grab;
+            background:radial-gradient(circle at 35% 30%,#fff,#fde7e9); border:3px solid rgb(var(--accent-rgb)); box-shadow:0 3px 10px rgba(0,0,0,.35),0 0 0 4px rgba(var(--accent-rgb),.18); }
+        .an-ruler-track input[type=range]::-moz-range-thumb{ pointer-events:auto; width:12px; height:12px; border-radius:50%; cursor:grab; background:#fff; border:3px solid rgb(var(--accent-rgb)); box-shadow:0 3px 10px rgba(0,0,0,.35); }
+        .an-ruler-track input[type=range]:active::-webkit-slider-thumb{ cursor:grabbing; transform:scale(1.15); }
+        .an-presets{ display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; }
+        .an-presets button{ border:1px solid rgba(var(--accent-rgb),.4); background:rgba(var(--accent-rgb),.08); color:var(--text); font-size:.72rem; font-weight:700; padding:3px 10px; border-radius:999px; cursor:pointer; }
+        .an-presets button:hover{ background:rgb(var(--accent-rgb)); color:#fff; }
+        @media (max-width:768px){ .an-dock-body{ width:min(340px,88vw); } }
+        @media print{ .an-dock{ display:none !important; } }
+
     </style>
 </head>
 <body data-mode="light">
@@ -526,60 +571,76 @@
 <div class="container-fluid py-4">
 
 <div id="viewAnalytics">
-    <!-- Panel KPI 6 Kolom -->
+    <!-- Panel KPI 4 Kolom -->
     <div class="row">
-        <div class="col-md-2"><div class="card kpi-card"><div>Korelasi Grafik 3</div><div id="kpiCorrelation" class="kpi-value" style="font-size:0.78rem; font-weight:600; line-height:1.3;">-</div></div></div>
-        <div class="col-md-2"><div class="card kpi-card"><div>Avg</div><select id="kpiAvgMetric" class="form-select form-select-sm mb-1" onchange="processData()"></select><div id="kpiNi" class="kpi-value">0</div></div></div>
-        <div class="col-md-2"><div class="card kpi-card"><div>Total</div><select id="kpiTotalMetric" class="form-select form-select-sm mb-1" onchange="processData()"></select><div id="kpiTemp" class="kpi-value">0</div></div></div>
-        <div class="col-md-2"><div class="card kpi-card"><div>Entries</div><div id="kpiTotal" class="kpi-value">0</div></div></div>
-        <div class="col-md-2"><div class="card kpi-card"><div>Total Pack</div><div id="kpiPack" class="kpi-value">0</div></div></div>
-        <div class="col-md-2"><div class="card kpi-card"><div>Total Scrap</div><div id="kpiScrap" class="kpi-value">0</div></div></div>
+        <div class="col-md-3"><div class="card kpi-card"><div>Korelasi Grafik 3</div><div id="kpiCorrelation" class="kpi-value" style="font-size:0.78rem; font-weight:600; line-height:1.3;">-</div></div></div>
+        <div class="col-md-3"><div class="card kpi-card"><div>Avg</div><select id="kpiAvgMetric" class="form-select form-select-sm mb-1" onchange="processData()"></select><div id="kpiNi" class="kpi-value">0</div></div></div>
+        <div class="col-md-3"><div class="card kpi-card"><div>Total</div><select id="kpiTotalMetric" class="form-select form-select-sm mb-1" onchange="processData()"></select><div id="kpiTemp" class="kpi-value">0</div></div></div>
+        <div class="col-md-3"><div class="card kpi-card"><div>Entries</div><div id="kpiTotal" class="kpi-value">0</div></div></div>
     </div>
 
-    <div class="card p-3">
-        <div class="row g-2 align-items-center">
-            <div class="col-auto"><input type="date" id="startDate" class="form-control"></div>
-            <div class="col-auto"><input type="date" id="endDate" class="form-control"></div>
-            <div class="col-auto"><select id="timeGrouping" class="form-select"><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option></select></div>
-            <div class="col-auto"><button class="btn btn-primary" onclick="processData()">Apply Filter</button></div>
-            <div class="col-auto"><button class="btn btn-secondary" onclick="resetData()">Reset</button></div>
-            <div class="col-auto"><button class="btn btn-info" onclick="syncAllSheets(true)">🔄 Sync Google Sheet</button></div>
-            <div class="col-auto" id="uploadJsonWrap" style="display:none;"><label class="btn btn-outline-warning">Upload JSON (Cadangan) <input type="file" id="fileInput" style="display: none;" onchange="handleFileUpload(event)"></label></div>
-            <div class="col-auto text-secondary small" id="syncStatus">Belum terhubung ke Google Sheet.</div>
-        </div>
-    </div>
+    <!-- Panel kontrol mengambang: filter tanggal + ruler + zoom/callout (bisa disembunyikan) -->
+    <div id="anDock" class="an-dock">
+      <button id="anDockTab" class="an-dock-tab" type="button" onclick="anDockToggle()" title="Tampilkan / sembunyikan panel kontrol"><span id="anDockTabIcon">›</span><span>KONTROL</span></button>
+      <div class="an-dock-body">
+        <div class="an-dock-head"><span>🎛️ Filter &amp; Kontrol</span><button class="an-dock-x" type="button" onclick="anDockToggle(true)" title="Sembunyikan">✕</button></div>
 
-    <div class="card p-3 an-toolbar">
-        <div class="d-flex flex-wrap align-items-end gap-3">
-            <div>
-                <label class="form-label small text-secondary mb-1 d-block">🎯 Callout angka</label>
-                <select id="anCallout" class="form-select form-select-sm" onchange="anSetCallout(this.value)" style="min-width:210px;">
-                    <option value="off">Mati</option>
-                    <option value="peaks">Puncak: Maks · Min · Terbaru</option>
-                    <option value="all">Banyak titik (otomatis rapi)</option>
-                </select>
-            </div>
-            <div>
-                <label class="form-label small text-secondary mb-1 d-block">〰️ Haluskan garis</label>
-                <select id="anSmooth" class="form-select form-select-sm" onchange="processData()" style="min-width:190px;">
-                    <option value="0">Data asli</option>
-                    <option value="3">Rata-rata 3 titik</option>
-                    <option value="7" selected>Rata-rata 7 titik</option>
-                    <option value="14">Rata-rata 14 titik</option>
-                </select>
-            </div>
-            <div>
-                <label class="form-label small text-secondary mb-1 d-block">🔍 Zoom &amp; geser grafik</label>
-                <div class="btn-group btn-group-sm" role="group">
-                    <button class="btn btn-outline-info" type="button" onclick="anZoom(1.35)" title="Perbesar">＋</button>
-                    <button class="btn btn-outline-info" type="button" onclick="anZoom(1/1.35)" title="Perkecil">－</button>
-                    <button class="btn btn-outline-info" type="button" onclick="anPan(160)" title="Geser ke kiri">◀</button>
-                    <button class="btn btn-outline-info" type="button" onclick="anPan(-160)" title="Geser ke kanan">▶</button>
-                    <button class="btn btn-outline-info" type="button" onclick="anResetZoom()" title="Kembali normal">⟲ Reset</button>
-                </div>
-            </div>
-            <div class="small text-secondary flex-fill" style="min-width:220px;">Garis tebal = data yang dihaluskan, garis tipis = data asli. Arahkan kursor/jari ke grafik untuk melihat nilai; Ctrl + scroll atau cubit untuk zoom.</div>
+        <div class="an-sec" style="margin-top:0;">📅 Filter tanggal</div>
+        <div class="row g-2">
+            <div class="col-6"><input type="date" id="startDate" class="form-control form-control-sm" onchange="processData()"></div>
+            <div class="col-6"><input type="date" id="endDate" class="form-control form-control-sm" onchange="processData()"></div>
         </div>
+        <div class="an-ruler">
+            <div class="an-ruler-labels"><span id="anRulerFrom">-</span><em id="anRulerCount"></em><span id="anRulerTo">-</span></div>
+            <div class="an-ruler-track">
+                <div class="an-ruler-ticks"></div>
+                <div class="an-ruler-fill" id="anRulerFill"></div>
+                <input type="range" id="anRangeA" min="0" max="0" value="0" step="1" oninput="anRulerInput()" aria-label="Tanggal awal">
+                <input type="range" id="anRangeB" min="0" max="0" value="0" step="1" oninput="anRulerInput()" aria-label="Tanggal akhir">
+            </div>
+            <div class="an-presets">
+                <button type="button" onclick="anPreset(30)">30 hari</button>
+                <button type="button" onclick="anPreset(90)">90 hari</button>
+                <button type="button" onclick="anPreset(180)">6 bln</button>
+                <button type="button" onclick="anPreset(365)">1 thn</button>
+                <button type="button" onclick="anPreset(0)">Semua</button>
+            </div>
+        </div>
+        <div class="row g-2 mt-1 align-items-center">
+            <div class="col-5"><select id="timeGrouping" class="form-select form-select-sm" onchange="processData()"><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option></select></div>
+            <div class="col-4"><button class="btn btn-primary btn-sm w-100" onclick="processData()">Apply</button></div>
+            <div class="col-3"><button class="btn btn-secondary btn-sm w-100" onclick="resetData()">Reset</button></div>
+        </div>
+
+        <div class="an-sec">📈 Grafik</div>
+        <label class="form-label small text-secondary mb-1">🎯 Callout angka</label>
+        <select id="anCallout" class="form-select form-select-sm mb-2" onchange="anSetCallout(this.value)">
+            <option value="off">Mati</option>
+            <option value="peaks">Puncak: Maks · Min · Terbaru</option>
+            <option value="all">Banyak titik (otomatis rapi)</option>
+        </select>
+        <label class="form-label small text-secondary mb-1">〰️ Haluskan garis</label>
+        <select id="anSmooth" class="form-select form-select-sm mb-2" onchange="processData()">
+            <option value="0" selected>Data asli</option>
+            <option value="3">Rata-rata 3 titik</option>
+            <option value="7">Rata-rata 7 titik</option>
+            <option value="14">Rata-rata 14 titik</option>
+        </select>
+        <label class="form-label small text-secondary mb-1">🔍 Zoom &amp; geser</label>
+        <div class="btn-group btn-group-sm w-100" role="group">
+            <button class="btn btn-outline-info" type="button" onclick="anZoom(1.35)" title="Perbesar">＋</button>
+            <button class="btn btn-outline-info" type="button" onclick="anZoom(1/1.35)" title="Perkecil">－</button>
+            <button class="btn btn-outline-info" type="button" onclick="anPan(160)" title="Geser ke kiri">◀</button>
+            <button class="btn btn-outline-info" type="button" onclick="anPan(-160)" title="Geser ke kanan">▶</button>
+            <button class="btn btn-outline-info" type="button" onclick="anResetZoom()" title="Kembali normal">⟲</button>
+        </div>
+        <div class="small text-secondary mt-1" style="font-size:.7rem;">Ctrl + scroll / cubit = zoom · Shift + geser = pan. Garis tebal = data dihaluskan, garis tipis = data asli.</div>
+
+        <div class="an-sec">🔄 Data</div>
+        <button class="btn btn-info btn-sm w-100" onclick="syncAllSheets(true)">🔄 Sync Google Sheet</button>
+        <div id="uploadJsonWrap" style="display:none;" class="mt-2"><label class="btn btn-outline-warning btn-sm w-100">Upload JSON (Cadangan) <input type="file" id="fileInput" style="display: none;" onchange="handleFileUpload(event)"></label></div>
+        <div class="text-secondary small mt-2" id="syncStatus" style="font-size:.72rem;">Belum terhubung ke Google Sheet.</div>
+      </div>
     </div>
 
     <div class="row">
@@ -4145,8 +4206,6 @@
             document.getElementById('kpiNi').innerText = avgOf(avgMetric).toFixed(2);
             document.getElementById('kpiTemp').innerText = sumOf(totalMetric).toFixed(0);
             document.getElementById('kpiTotal').innerText = totalGroups;
-            document.getElementById('kpiPack').innerText = sumOf('Product package').toFixed(0);
-            document.getElementById('kpiScrap').innerText = sumOf('Scrap Generate').toFixed(0);
 
             // Analisis korelasi untuk grafik ketiga
             const m3a = document.getElementById('metric3a').value;
@@ -4161,7 +4220,7 @@
             const r = pearsonCorrelation(pairXs, pairYs);
             document.getElementById('kpiCorrelation').innerText = correlationText(m3a, m3b, r);
         } else {
-            ['kpiNi', 'kpiTemp', 'kpiTotal', 'kpiPack', 'kpiScrap'].forEach(id => document.getElementById(id).innerText = "0");
+            ['kpiNi', 'kpiTemp', 'kpiTotal'].forEach(id => document.getElementById(id).innerText = "0");
             document.getElementById('kpiCorrelation').innerText = '-';
         }
 
@@ -4189,6 +4248,7 @@
         const m3b2 = document.getElementById('metric3b').value;
         anFeed(chart3, [{ label: m3a2, data: anCol(m3a2) }, { label: m3b2, data: anCol(m3b2) }], anLabels);
 
+        try { anRulerSync(); } catch (e) {}
         populateExcelDateSelect();
         if (document.getElementById('viewExcel') && document.getElementById('viewExcel').style.display !== 'none') renderExcelDashboard();
     }
@@ -4726,6 +4786,74 @@
             if (b) b.addEventListener('click', function(){ on = !on; try { localStorage.setItem('rkef_fx', on ? '1' : '0'); } catch (e) {} applyFx(on); });
         });
     })();
+
+    // ==================== PANEL KONTROL MENGAMBANG + RULER TANGGAL ====================
+    let anDates = [], anRulerTimer = null;
+    function anDockToggle(force){
+        const d = document.getElementById('anDock'); if (!d) return;
+        const closed = typeof force === 'boolean' ? force : !d.classList.contains('closed');
+        d.classList.toggle('closed', closed);
+        const ic = document.getElementById('anDockTabIcon'); if (ic) ic.textContent = closed ? '⚙' : '›';
+        try { localStorage.setItem('rkef_dock', closed ? '0' : '1'); } catch (e) {}
+    }
+    function anDockInit(){
+        let open = window.innerWidth >= 1200;
+        try { const v = localStorage.getItem('rkef_dock'); if (v === '1') open = true; else if (v === '0') open = false; } catch (e) {}
+        anDockToggle(!open);
+        const tb = document.querySelector('.topbar');
+        const setH = function(){ if (tb) document.documentElement.style.setProperty('--topbar-h', tb.offsetHeight + 'px'); };
+        setH(); window.addEventListener('resize', setH);
+        if (tb && window.ResizeObserver) new ResizeObserver(setH).observe(tb);
+    }
+    function anDateStr(d){ return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+    function anRulerPaint(){
+        const A = document.getElementById('anRangeA'), B = document.getElementById('anRangeB');
+        if (!A || !B) return;
+        const mx = Math.max(0, anDates.length - 1);
+        const lo = Math.min(+A.value, +B.value), hi = Math.max(+A.value, +B.value);
+        const pc = x => mx ? x / mx * 100 : 0;
+        const f = document.getElementById('anRulerFill');
+        f.style.left = pc(lo) + '%'; f.style.width = (pc(hi) - pc(lo)) + '%';
+        document.getElementById('anRulerFrom').textContent = anDates.length ? anShortLabel(anDates[lo]) : '-';
+        document.getElementById('anRulerTo').textContent = anDates.length ? anShortLabel(anDates[hi]) : '-';
+        document.getElementById('anRulerCount').textContent = anDates.length ? (hi - lo + 1) + ' hari' : '';
+    }
+    function anRulerSync(){
+        const A = document.getElementById('anRangeA'), B = document.getElementById('anRangeB');
+        if (!A || !B) return;
+        anDates = Array.from(new Set(analyticsData.map(r => r.Date))).filter(Boolean).sort();
+        const mx = Math.max(0, anDates.length - 1);
+        A.max = mx; B.max = mx;
+        const sv = document.getElementById('startDate').value, ev = document.getElementById('endDate').value;
+        let lo = 0, hi = mx;
+        if (sv) { lo = anDates.findIndex(d => d >= sv); if (lo < 0) lo = mx; }
+        if (ev) { hi = -1; anDates.forEach((d, i) => { if (d <= ev) hi = i; }); if (hi < 0) hi = 0; }
+        if (document.activeElement !== A) A.value = lo;
+        if (document.activeElement !== B) B.value = hi;
+        anRulerPaint();
+    }
+    function anRulerInput(){
+        const A = document.getElementById('anRangeA'), B = document.getElementById('anRangeB');
+        const mx = Math.max(0, anDates.length - 1);
+        const lo = Math.min(+A.value, +B.value), hi = Math.max(+A.value, +B.value);
+        document.getElementById('startDate').value = (lo <= 0) ? '' : anDates[lo];
+        document.getElementById('endDate').value = (hi >= mx) ? '' : anDates[hi];
+        anRulerPaint();
+        clearTimeout(anRulerTimer);
+        anRulerTimer = setTimeout(processData, 90);
+    }
+    function anPreset(days){
+        if (!anDates.length) return;
+        if (!days) { document.getElementById('startDate').value = ''; document.getElementById('endDate').value = ''; }
+        else {
+            const last = anDates[anDates.length - 1], d = parseLocalDate(last);
+            d.setDate(d.getDate() - days + 1);
+            document.getElementById('startDate').value = anDateStr(d);
+            document.getElementById('endDate').value = '';
+        }
+        processData();
+    }
+    document.addEventListener('DOMContentLoaded', anDockInit);
 
     $(document).ready(function() {
         initLayout();
