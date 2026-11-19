@@ -3,6 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#0b0f14">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
     <title>Dashboard RKEF - PT CERIA METALINDO PRIMA</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css">
@@ -10,6 +14,8 @@
     <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
     <script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
@@ -250,10 +256,186 @@
 
         /* ===== Deterrent: blur konten saat window kehilangan fokus / tab disembunyikan ===== */
         body.blur-protect #appRoot{ filter: blur(20px); transition: filter .15s ease; }
+
+        /* =====================================================================
+           TAMPILAN FUTURISTIK (lapisan tambahan) — latar bergerak, kaca, gradasi, bayangan
+           ===================================================================== */
+        :root{
+            --accent-rgb:237,28,36; --accent2-rgb:255,194,14; --panel-rgb:255,255,255;
+            --panel2-rgb:244,246,249; --bg-rgb:250,245,245; --text-rgb:25,30,36;
+            --font-head:'Rajdhani','Segoe UI',sans-serif;
+        }
+
+        /* --- Latar hidup: gradasi bergeser + bola cahaya melayang + warna berputar pelan --- */
+        #bgFx{
+            position:fixed; inset:0; z-index:-1; overflow:hidden; pointer-events:none;
+            background:linear-gradient(125deg,
+                rgba(var(--accent-rgb),.20), rgba(var(--accent2-rgb),.14) 25%,
+                rgba(var(--bg-rgb),0) 50%, rgba(var(--accent-rgb),.12) 75%, rgba(var(--accent2-rgb),.20));
+            background-size:320% 320%;
+            animation:fxShift 26s ease-in-out infinite, fxHue 70s ease-in-out infinite;
+        }
+        #bgFx i{ position:absolute; border-radius:50%; filter:blur(80px); opacity:.55; will-change:transform; animation:fxFloat 32s ease-in-out infinite; }
+        #bgFx i:nth-child(1){ width:46vmax; height:46vmax; left:-12vmax; top:-14vmax; background:rgba(var(--accent-rgb),.38); }
+        #bgFx i:nth-child(2){ width:42vmax; height:42vmax; right:-14vmax; bottom:-16vmax; background:rgba(var(--accent2-rgb),.34); animation-duration:40s; animation-delay:-12s; }
+        #bgFx i:nth-child(3){ width:28vmax; height:28vmax; left:38%; top:30%; background:rgba(var(--accent-rgb),.22); animation-duration:36s; animation-delay:-20s; }
+        #bgFx::after{
+            content:''; position:absolute; inset:0;
+            background-image:linear-gradient(rgba(var(--text-rgb),.045) 1px,transparent 1px),linear-gradient(90deg,rgba(var(--text-rgb),.045) 1px,transparent 1px);
+            background-size:52px 52px;
+            -webkit-mask-image:radial-gradient(ellipse at 50% 25%,#000 15%,transparent 78%); mask-image:radial-gradient(ellipse at 50% 25%,#000 15%,transparent 78%);
+            animation:fxGrid 40s linear infinite;
+        }
+        @keyframes fxShift{ 0%{background-position:0% 50%} 50%{background-position:100% 50%} 100%{background-position:0% 50%} }
+        @keyframes fxHue{ 0%{filter:hue-rotate(-28deg)} 50%{filter:hue-rotate(34deg)} 100%{filter:hue-rotate(-28deg)} }
+        @keyframes fxFloat{ 0%,100%{transform:translate(0,0) scale(1)} 33%{transform:translate(6vmax,4vmax) scale(1.12)} 66%{transform:translate(-4vmax,7vmax) scale(.92)} }
+        @keyframes fxGrid{ from{background-position:0 0,0 0} to{background-position:52px 52px,52px 52px} }
+        body.fx-off #bgFx, body.fx-off #bgFx i, body.fx-off #bgFx::after, body.fx-off #authOverlay, body.fx-off #authOverlay *{ animation:none !important; }
+        @media (prefers-reduced-motion: reduce){ #bgFx, #bgFx i, #bgFx::after, #authOverlay, #authOverlay *{ animation:none !important; } }
+
+        body{ font-family:var(--font-body); }
+        ::-webkit-scrollbar{ width:10px; height:10px; }
+        ::-webkit-scrollbar-thumb{ background:linear-gradient(180deg,rgba(var(--accent-rgb),.7),rgba(var(--accent2-rgb),.6)); border-radius:10px; }
+        ::-webkit-scrollbar-track{ background:rgba(var(--text-rgb),.06); }
+
+        /* --- Topbar kaca + garis neon --- */
+        .topbar{
+            background:linear-gradient(180deg,rgba(var(--panel-rgb),.78),rgba(var(--panel-rgb),.55)) !important;
+            backdrop-filter:blur(16px) saturate(150%); -webkit-backdrop-filter:blur(16px) saturate(150%);
+            box-shadow:0 10px 30px rgba(0,0,0,.12), 0 1px 0 rgba(255,255,255,.25) inset;
+            border-bottom:1px solid rgba(var(--accent-rgb),.35);
+        }
+        .topbar::after{ content:''; position:absolute; left:0; right:0; bottom:-1px; height:2px;
+            background:linear-gradient(90deg,transparent,rgb(var(--accent-rgb)),rgb(var(--accent2-rgb)),rgb(var(--accent-rgb)),transparent);
+            background-size:200% 100%; animation:neonRun 7s linear infinite; opacity:.9; }
+        @keyframes neonRun{ from{background-position:0 0} to{background-position:200% 0} }
+        .brand-text h1{ font-family:var(--font-head); font-size:1.5rem; letter-spacing:3px;
+            background:linear-gradient(90deg,var(--text),rgb(var(--accent-rgb)));
+            -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; color:transparent;
+            border-left:5px solid transparent; border-image:linear-gradient(180deg,rgb(var(--accent-rgb)),rgb(var(--accent2-rgb))) 1; }
+        .brand-logo{ background:#fff; border-radius:8px; padding:3px 6px; box-shadow:0 4px 14px rgba(0,0,0,.18); }
+
+        /* --- Caption berganti di header --- */
+        .ticker{ max-width:1600px; margin:10px auto 0; display:flex; align-items:center; gap:12px; padding:7px 14px;
+            border-radius:12px; position:relative; overflow:hidden; cursor:pointer;
+            background:linear-gradient(90deg,rgba(var(--accent-rgb),.16),rgba(var(--accent2-rgb),.12) 60%,rgba(var(--accent-rgb),.05));
+            border:1px solid rgba(var(--accent-rgb),.30); box-shadow:0 6px 18px rgba(var(--accent-rgb),.10); }
+        .ticker-tag{ font-weight:700; font-size:.72rem; letter-spacing:1.4px; padding:4px 11px; border-radius:999px; white-space:nowrap; color:#fff;
+            background:linear-gradient(135deg,#e11d48,#fb7185); box-shadow:0 0 14px rgba(225,29,72,.45); }
+        .ticker-tag.prod{ background:linear-gradient(135deg,#0891b2,#22d3ee); box-shadow:0 0 14px rgba(8,145,178,.45); }
+        .ticker-text{ flex:1; font-size:.92rem; line-height:1.35; font-weight:500; transition:opacity .7s ease, transform .7s ease; }
+        .ticker-text.out{ opacity:0; transform:translateY(10px); }
+        .ticker-bar{ position:absolute; left:0; bottom:0; height:2px; width:100%; transform-origin:left center;
+            background:linear-gradient(90deg,rgb(var(--accent-rgb)),rgb(var(--accent2-rgb))); animation:tickBar var(--tick-ms,180000ms) linear forwards; }
+        @keyframes tickBar{ from{transform:scaleX(0)} to{transform:scaleX(1)} }
+        .offline-banner{ margin:0 20px 10px; padding:8px 14px; border-radius:10px; font-size:.85rem; font-weight:600;
+            background:linear-gradient(90deg,rgba(255,193,7,.22),rgba(255,152,0,.18)); border:1px solid rgba(255,193,7,.55); color:var(--text); }
+        .offline-banner button{ margin-left:10px; }
+
+        /* --- Kartu & panel: kaca, gradasi, bayangan berlapis --- */
+        .card, .excel-panel, .excel-banner{
+            background-color:rgba(var(--panel-rgb),.86) !important;
+            background-image:linear-gradient(145deg,rgba(255,255,255,.14),rgba(255,255,255,0) 45%,rgba(var(--accent-rgb),.05)) !important;
+            border:1px solid rgba(var(--accent-rgb),.20) !important;
+            backdrop-filter:blur(12px) saturate(140%); -webkit-backdrop-filter:blur(12px) saturate(140%);
+            box-shadow:0 1px 0 rgba(255,255,255,.35) inset, 0 4px 8px rgba(0,0,0,.06), 0 14px 34px rgba(0,0,0,.10), 0 0 0 1px rgba(var(--accent-rgb),.04);
+            border-radius:16px !important;
+            transition:transform .25s ease, box-shadow .25s ease, border-color .25s ease;
+        }
+        .card:hover, .excel-panel:hover{ transform:translateY(-3px);
+            box-shadow:0 1px 0 rgba(255,255,255,.4) inset, 0 8px 16px rgba(0,0,0,.08), 0 22px 46px rgba(var(--accent-rgb),.18);
+            border-color:rgba(var(--accent-rgb),.45) !important; }
+        .excel-panel{ position:relative; }
+        .excel-panel::before, .excel-panel::after{ content:''; position:absolute; width:18px; height:18px; pointer-events:none; opacity:.85; }
+        .excel-panel::before{ top:7px; left:7px; border-top:2px solid rgb(var(--accent-rgb)); border-left:2px solid rgb(var(--accent-rgb)); border-top-left-radius:6px; }
+        .excel-panel::after{ bottom:7px; right:7px; border-bottom:2px solid rgb(var(--accent2-rgb)); border-right:2px solid rgb(var(--accent2-rgb)); border-bottom-right-radius:6px; }
+        .excel-panel-title{
+            font-family:var(--font-head); font-size:1.05rem; letter-spacing:1.4px;
+            background:linear-gradient(90deg,rgba(var(--accent-rgb),.28),rgba(var(--accent-rgb),.06) 70%,transparent) !important;
+            border-left:5px solid rgb(var(--accent-rgb)) !important; box-shadow:-6px 0 18px -6px rgba(var(--accent-rgb),.55);
+        }
+        .excel-stat, .excel-pack-row, .lvl-box, .excel-drill-item{
+            background:linear-gradient(145deg,rgba(var(--panel2-rgb),.95),rgba(var(--panel-rgb),.85)) !important;
+            border:1px solid rgba(var(--accent-rgb),.18) !important;
+            box-shadow:0 1px 0 rgba(255,255,255,.5) inset, 0 6px 14px rgba(0,0,0,.07);
+        }
+        .excel-stat .val, .excel-pack-row .pk-val, .lvl-val, .excel-achieve, .kpi-value{ font-family:var(--font-head); letter-spacing:.5px; text-shadow:0 2px 10px rgba(var(--accent-rgb),.28); }
+        .excel-stat .val{ font-size:1.5rem; }
+        .kpi-card{ position:relative; overflow:hidden; }
+        .kpi-card::after{ content:''; position:absolute; left:0; right:0; top:0; height:3px; background:linear-gradient(90deg,rgb(var(--accent-rgb)),rgb(var(--accent2-rgb))); }
+        .kpi-value{ font-size:1.9rem; }
+        .excel-banner{ border-left:6px solid rgb(var(--accent-rgb)) !important; }
+        .excel-banner h2{ font-family:var(--font-head); letter-spacing:3px; font-size:1.6rem; }
+
+        /* --- Tombol & kontrol --- */
+        .btn{ border-radius:10px; transition:transform .15s ease, box-shadow .2s ease, filter .2s ease; }
+        .btn:hover{ transform:translateY(-1px); }
+        .btn-primary{ background:linear-gradient(135deg,rgb(var(--accent-rgb)),rgba(var(--accent-rgb),.62)) !important; border:0 !important; color:#fff !important;
+            box-shadow:0 8px 20px rgba(var(--accent-rgb),.32); text-shadow:0 1px 2px rgba(0,0,0,.28); }
+        .btn-primary:hover{ filter:brightness(1.08); box-shadow:0 10px 26px rgba(var(--accent-rgb),.45); }
+        .btn-info{ background:linear-gradient(135deg,#06b6d4,#22d3ee) !important; border:0 !important; color:#041b22 !important; box-shadow:0 8px 20px rgba(6,182,212,.30); }
+        .btn-secondary{ background:linear-gradient(135deg,#64748b,#94a3b8) !important; border:0 !important; color:#fff !important; }
+        .view-toggle{ background:rgba(var(--panel-rgb),.7); backdrop-filter:blur(10px); box-shadow:0 6px 18px rgba(0,0,0,.10); border-radius:12px; }
+        .view-toggle button{ border-radius:9px; font-family:var(--font-head); font-size:.95rem; letter-spacing:.8px; }
+        .view-toggle button.active{ background:linear-gradient(135deg,rgb(var(--accent-rgb)),rgba(var(--accent-rgb),.65)); color:#fff;
+            box-shadow:0 6px 16px rgba(var(--accent-rgb),.42); }
+        .mode-toggle, .theme-select{ background:rgba(var(--panel-rgb),.75); backdrop-filter:blur(8px); border-radius:10px; }
+        .form-control, .form-select{ border-radius:10px !important; }
+
+        /* --- Grafik analitik --- */
+        #viewAnalytics .chart-container{ height:420px; }
+        .an-toolbar{ border-left:5px solid rgb(var(--accent-rgb)) !important; }
+
+        /* --- Teks Ladle Availability lebih besar --- */
+        #ladleList{ font-size:clamp(1.15rem,1.7vw,1.7rem); line-height:1.85; font-weight:600; padding:20px 26px; letter-spacing:.2px;
+            background:linear-gradient(145deg,rgba(var(--panel2-rgb),.95),rgba(var(--panel-rgb),.9)); border:1px solid rgba(var(--accent-rgb),.3); border-radius:14px; }
+
+        /* --- Halaman login --- */
+        #authOverlay{
+            background:linear-gradient(125deg,#060a12,#0b1730 18%,#1b0f33 36%,#2d0a1a 54%,#06242a 72%,#0b1730 88%,#060a12) !important;
+            background-size:500% 500% !important; animation:authShift 24s ease-in-out infinite; overflow-y:auto !important; overflow-x:hidden !important; position:fixed;
+        }
+        @keyframes authShift{ 0%{background-position:0% 50%} 50%{background-position:100% 50%} 100%{background-position:0% 50%} }
+        #authOverlay .auth-bg{ position:fixed; inset:0; pointer-events:none; overflow:hidden; }
+        #authOverlay .auth-bg i{ position:absolute; border-radius:50%; filter:blur(90px); opacity:.55; animation:fxFloat 30s ease-in-out infinite; }
+        #authOverlay .auth-bg i:nth-child(1){ width:46vmax; height:46vmax; left:-12vmax; top:-14vmax; background:rgba(0,212,255,.42); }
+        #authOverlay .auth-bg i:nth-child(2){ width:42vmax; height:42vmax; right:-12vmax; bottom:-16vmax; background:rgba(237,28,36,.38); animation-duration:38s; animation-delay:-10s; }
+        #authOverlay .auth-bg i:nth-child(3){ width:30vmax; height:30vmax; left:45%; top:35%; background:rgba(255,194,14,.22); animation-duration:34s; animation-delay:-18s; }
+        #authOverlay .auth-bg b{ position:absolute; inset:0;
+            background-image:linear-gradient(rgba(0,212,255,.07) 1px,transparent 1px),linear-gradient(90deg,rgba(0,212,255,.07) 1px,transparent 1px);
+            background-size:56px 56px; -webkit-mask-image:radial-gradient(ellipse at 50% 50%,#000 10%,transparent 72%); mask-image:radial-gradient(ellipse at 50% 50%,#000 10%,transparent 72%);
+            animation:fxGrid 30s linear infinite; }
+        @property --ang{ syntax:'<angle>'; initial-value:0deg; inherits:false; }
+        @keyframes spinAng{ to{ --ang:360deg; } }
+        #authOverlay .auth-card{
+            position:relative; z-index:1; max-width:400px !important;
+            background:rgba(14,20,31,.62) !important; backdrop-filter:blur(20px) saturate(150%); -webkit-backdrop-filter:blur(20px) saturate(150%);
+            border:1px solid rgba(0,212,255,.22) !important; border-radius:18px !important;
+            box-shadow:0 0 0 1px rgba(255,255,255,.05) inset, 0 30px 80px rgba(0,0,0,.6), 0 0 70px rgba(0,212,255,.14) !important;
+        }
+        #authOverlay .auth-card::before{ content:''; position:absolute; inset:-1px; border-radius:18px; padding:1.5px; pointer-events:none;
+            background:conic-gradient(from var(--ang),transparent 0 55%,rgba(0,212,255,.95),rgba(255,194,14,.85),rgba(237,28,36,.8),transparent 92%);
+            -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0); -webkit-mask-composite:xor; mask-composite:exclude;
+            animation:spinAng 7s linear infinite; }
+        #authOverlay .auth-logo{ background:#fff; border-radius:10px; padding:6px 12px; height:66px !important; box-shadow:0 8px 24px rgba(0,0,0,.4); }
+        #authOverlay h3{ font-family:var(--font-head); font-size:1.5rem !important; letter-spacing:3px; text-transform:uppercase;
+            background:linear-gradient(90deg,#fff,#7dd3fc,#fde68a); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; }
+        #authOverlay p.auth-sub{ letter-spacing:2px; }
+        #authOverlay .form-control{ background:rgba(8,12,20,.65) !important; border:1px solid rgba(125,211,252,.22) !important; }
+        #authOverlay .form-control:focus{ border-color:#22d3ee !important; box-shadow:0 0 0 .2rem rgba(34,211,238,.18) !important; }
+        #authOverlay .btn-auth{ background:linear-gradient(90deg,#0a84ff,#22d3ee) !important; border:0 !important; color:#021018 !important; letter-spacing:2px;
+            box-shadow:0 10px 28px rgba(10,132,255,.45); font-family:var(--font-head); font-size:1.1rem; }
+
+        /* --- Saat export (html2canvas): matikan efek yang tidak didukung --- */
+        body.exporting *{ backdrop-filter:none !important; -webkit-backdrop-filter:none !important; animation:none !important; transition:none !important; }
+        body.exporting .card, body.exporting .excel-panel{ transform:none !important; }
+        body.exporting .excel-panel::before, body.exporting .excel-panel::after{ display:none; }
+
     </style>
 </head>
 <body data-mode="light">
 
+<div id="bgFx" aria-hidden="true"><i></i><i></i><i></i></div>
 <div id="watermarkLayer"></div>
 
 <div id="exportPasswordModal" style="display:none; position:fixed; inset:0; z-index:10000; background:rgba(0,0,0,0.6); align-items:center; justify-content:center;">
@@ -269,12 +451,14 @@
 </div>
 
 <div id="authOverlay">
+  <div class="auth-bg" aria-hidden="true"><i></i><i></i><i></i><b></b></div>
   <div class="auth-card">
     <img class="auth-logo" src="data:image/png;base64,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" alt="Ceria Metalindo Prima">
     <h3>Dashboard Operasional RKEF</h3>
     <p class="auth-sub">PT CERIA METALINDO PRIMA</p>
 
     <div id="authMsg" class="auth-msg"></div>
+    <div id="offlineHint" class="auth-msg" style="display:none;background:rgba(255,193,7,.12);color:#ffd666;">📴 Anda sedang offline. Login dengan akun yang pernah dipakai di browser ini untuk membuka data terakhir.</div>
 
     <!-- LOGIN FORM -->
     <div id="loginForm">
@@ -323,6 +507,7 @@
       <span class="small text-secondary" id="userInfoText"></span>
       <button class="btn btn-sm btn-outline-danger" onclick="doLogout()">Logout</button>
     </div>
+    <button id="fxToggle" class="mode-toggle" type="button" title="Hidupkan/matikan animasi latar"><span>✨</span><span id="fxToggleLabel">FX</span></button>
     <button id="modeToggle" class="mode-toggle" type="button" title="Ganti mode gelap/terang">
       <span id="modeToggleIcon">🌙</span><span id="modeToggleLabel">Dark</span>
     </button>
@@ -330,7 +515,13 @@
       <select id="themeSelect" class="theme-select" title="Tema warna"></select>
     </div>
   </div>
+  <div class="ticker" id="captionTicker" title="Klik untuk caption berikutnya">
+    <span class="ticker-tag" id="tickerTag">K3</span>
+    <div class="ticker-text" id="tickerText">...</div>
+    <div class="ticker-bar" id="tickerBar"></div>
+  </div>
 </div>
+<div id="offlineBanner" class="offline-banner" style="display:none;"></div>
 
 <div class="container-fluid py-4">
 
@@ -355,6 +546,39 @@
             <div class="col-auto"><button class="btn btn-info" onclick="syncAllSheets(true)">🔄 Sync Google Sheet</button></div>
             <div class="col-auto" id="uploadJsonWrap" style="display:none;"><label class="btn btn-outline-warning">Upload JSON (Cadangan) <input type="file" id="fileInput" style="display: none;" onchange="handleFileUpload(event)"></label></div>
             <div class="col-auto text-secondary small" id="syncStatus">Belum terhubung ke Google Sheet.</div>
+        </div>
+    </div>
+
+    <div class="card p-3 an-toolbar">
+        <div class="d-flex flex-wrap align-items-end gap-3">
+            <div>
+                <label class="form-label small text-secondary mb-1 d-block">🎯 Callout angka</label>
+                <select id="anCallout" class="form-select form-select-sm" onchange="anSetCallout(this.value)" style="min-width:210px;">
+                    <option value="off">Mati</option>
+                    <option value="peaks">Puncak: Maks · Min · Terbaru</option>
+                    <option value="all">Banyak titik (otomatis rapi)</option>
+                </select>
+            </div>
+            <div>
+                <label class="form-label small text-secondary mb-1 d-block">〰️ Haluskan garis</label>
+                <select id="anSmooth" class="form-select form-select-sm" onchange="processData()" style="min-width:190px;">
+                    <option value="0">Data asli</option>
+                    <option value="3">Rata-rata 3 titik</option>
+                    <option value="7" selected>Rata-rata 7 titik</option>
+                    <option value="14">Rata-rata 14 titik</option>
+                </select>
+            </div>
+            <div>
+                <label class="form-label small text-secondary mb-1 d-block">🔍 Zoom &amp; geser grafik</label>
+                <div class="btn-group btn-group-sm" role="group">
+                    <button class="btn btn-outline-info" type="button" onclick="anZoom(1.35)" title="Perbesar">＋</button>
+                    <button class="btn btn-outline-info" type="button" onclick="anZoom(1/1.35)" title="Perkecil">－</button>
+                    <button class="btn btn-outline-info" type="button" onclick="anPan(160)" title="Geser ke kiri">◀</button>
+                    <button class="btn btn-outline-info" type="button" onclick="anPan(-160)" title="Geser ke kanan">▶</button>
+                    <button class="btn btn-outline-info" type="button" onclick="anResetZoom()" title="Kembali normal">⟲ Reset</button>
+                </div>
+            </div>
+            <div class="small text-secondary flex-fill" style="min-width:220px;">Garis tebal = data yang dihaluskan, garis tipis = data asli. Arahkan kursor/jari ke grafik untuk melihat nilai; Ctrl + scroll atau cubit untuk zoom.</div>
         </div>
     </div>
 
@@ -943,6 +1167,7 @@
         const password = document.getElementById('loginPassword').value;
         if (!username || !password) { showAuthMsg('Isi username dan password.'); return; }
         const btn = document.getElementById('btnDoLogin');
+        if (!navigator.onLine) { if (await tryOfflineLogin(username, password)) return; }
         btn.disabled = true; btn.innerText = 'Memproses...';
         try {
             const deviceInfo = navigator.userAgent.slice(0, 150);
@@ -950,12 +1175,13 @@
             if (r.success) {
                 currentUser = { username: r.username, token: r.token, fullName: r.fullName, jobTitle: r.jobTitle, role: r.role };
                 sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(currentUser));
+                offlineCredSave(username, password, { username: r.username, fullName: r.fullName, jobTitle: r.jobTitle, role: r.role });
                 enterApp();
             } else {
                 showAuthMsg(r.message || 'Login gagal.');
             }
         } catch (e) {
-            showAuthMsg('Gagal terhubung ke server. Cek koneksi internet Anda.');
+            if (!(await tryOfflineLogin(username, password))) showAuthMsg('Gagal terhubung ke server. Cek koneksi internet Anda.');
         } finally {
             btn.disabled = false; btn.innerText = 'LOGIN';
         }
@@ -996,7 +1222,7 @@
     document.addEventListener('visibilitychange', function(){ if (!document.hidden && currentUser) heartbeat(); });
 
     async function heartbeat(){
-        if (!currentUser) return;
+        if (!currentUser || offlineMode) return;
         try {
             const r = await authPost({ action: 'heartbeat', username: currentUser.username, token: currentUser.token });
             if (!r.valid) forceLogoutExpired(r.reason);
@@ -1076,10 +1302,20 @@
         applyRoleRestrictions();
         renderWatermark();
         resetInactivityTimer();
+        captionStart();
+
+        if (offlineMode) {
+            // Mode offline: hanya data tersimpan di browser, tanpa sinkron/heartbeat ke server.
+            showOfflineBanner();
+            ['btnViewInput', 'btnViewAdmin'].forEach(function(id){ const e = document.getElementById(id); if (e) e.style.display = 'none'; });
+            ['capturePanel', 'trafoPanel', 'thermalPanel'].forEach(function(id){ const e = document.getElementById(id); if (e) e.style.display = 'none'; });
+            restoreFromCache().then(function(ok){ if (!ok) alert('Belum ada data tersimpan di browser ini.'); });
+            return;
+        }
         heartbeatIntervalId = setInterval(heartbeat, HEARTBEAT_MS);
 
-        // Data baru dimuat SETELAH login (backend mewajibkan token valid).
-        syncAllSheets(false);
+        // Tampilkan dulu data terakhir yang tersimpan di browser (instan), lalu perbarui dari Google Sheet.
+        restoreFromCache().finally(function(){ syncAllSheets(false); });
         if (AUTO_REFRESH_MINUTES > 0) {
             setInterval(function(){ syncAllSheets(false); }, AUTO_REFRESH_MINUTES * 60 * 1000);
         }
@@ -1374,6 +1610,7 @@
             const sheetParam = sheetSel ? sheetSel.value : 'Data 2026';
             rawData = await fetchSheetData(sheetParam);
             await loadLadleData(sheetParam);
+            dataCacheSet('produksi:' + sheetParam, { rows: rawData, ladle: ladleByDate, ts: Date.now() });
             thermalRefreshSaved();
             trafoRefreshSaved();
             populateExcelDateSelect();
@@ -1381,7 +1618,7 @@
             const now = new Date();
             if (statusEl) statusEl.innerText = 'Dashboard Produksi tersinkron (' + sheetParam + '): ' + now.toLocaleTimeString('id-ID') + ' — ' + rawData.length + ' baris.';
         } catch (err) {
-            if (statusEl) statusEl.innerText = 'Gagal sinkron Dashboard Produksi: ' + err.message;
+            if (statusEl) statusEl.innerText = 'Gagal sinkron Dashboard Produksi: ' + err.message + (rawData.length ? ' — menampilkan data terakhir yang tersimpan.' : '');
             if (showAlertOnError) alert('Gagal memuat data Dashboard Produksi:\n' + err.message);
         }
     }
@@ -1395,17 +1632,19 @@
         }
         try {
             analyticsData = await fetchSheetData('Data');
+            dataCacheSet('analytics', { rows: analyticsData, ts: Date.now() });
             processData();
             const now = new Date();
             if (statusEl) statusEl.innerText = 'Analitik Data tersinkron (Data): ' + now.toLocaleTimeString('id-ID') + ' — ' + analyticsData.length + ' baris.';
         } catch (err) {
-            if (statusEl) statusEl.innerText = 'Gagal sinkron Analitik Data: ' + err.message;
+            if (statusEl) statusEl.innerText = 'Gagal sinkron Analitik Data: ' + err.message + (analyticsData.length ? ' — menampilkan data terakhir yang tersimpan.' : '');
             if (showAlertOnError) alert('Gagal memuat data Analitik Data:\n' + err.message);
         }
     }
 
     // Tombol "Sync Google Sheet" -> refresh kedua sumber sekaligus
     async function syncAllSheets(showAlertOnError) {
+        if (offlineMode) { if (showAlertOnError) alert('Mode offline: tidak bisa sinkron. Klik "Sambungkan ulang" saat internet tersedia.'); return; }
         const statusEl = document.getElementById('syncStatus');
         if (statusEl) statusEl.innerText = 'Menyinkronkan data dari sheet "Data"...';
         const [aOk, pOk] = await Promise.all([
@@ -1785,16 +2024,19 @@
             // html2canvas menyalin SELURUH halaman tiap kali dipanggil: lewati tampilan lain (tabel Analitik besar, dll.)
             // dan canvas grafik milik panel lain supaya jauh lebih cepat.
             ignoreElements: function (el) {
-                if (el.id === 'viewAnalytics' || el.id === 'viewInput' || el.id === 'viewAdmin' || el.id === 'authOverlay') return true;
+                if (el.id === 'viewAnalytics' || el.id === 'viewInput' || el.id === 'viewAdmin' || el.id === 'authOverlay' || el.id === 'bgFx') return true;
                 return el.tagName === 'CANVAS' && !panel.contains(el);
             },
             onclone: function (doc) {
+                doc.body.classList.add('exporting');
                 const ta = doc.getElementById('ladleList');
                 if (!ta) return;
                 const d = doc.createElement('div');
                 d.id = 'ladleList';
                 d.className = ta.className;
-                d.style.cssText = 'white-space:pre-wrap;word-break:break-word;height:auto;min-height:0;overflow:visible;font-family:inherit;';
+                // Teks Ladle dibuat BESAR di export: ukuran huruf mengikuti lebar panel (≈2,4% lebar) supaya terbaca di slide
+                const fz = Math.round(Math.max(30, Math.min(64, (panel.offsetWidth || 1500) * 0.026)));
+                d.style.cssText = 'white-space:pre-wrap;word-break:break-word;height:auto;min-height:0;overflow:visible;font-family:inherit;font-weight:700;line-height:1.6;padding:26px 34px;font-size:' + fz + 'px;';
                 d.textContent = ta.value;
                 ta.parentNode.replaceChild(d, ta);
             }
@@ -1819,6 +2061,7 @@
             .map(l => '#' + l.no + '  ' + l.status);
         ta.value = lines.join('\n');
         ta.rows = Math.max(5, lines.length + 1);
+        ta.style.minHeight = (Math.max(5, lines.length + 1) * 2.1) + 'rem';
         ladleFilledKey = key;
     }
 
@@ -2401,7 +2644,16 @@
         { const it = deckBase('LADLE AVAILABILITY', W, H, fs);
           it.push({ t: 'rrect', x: 0.035 * W, y: 0.17 * H, w: 0.93 * W, h: 0.77 * H, color: DECK.fill, border: DECK.teal, bw: 1.25, r: 0.006 * W });
           const ta = document.getElementById('ladleList');
-          it.push({ t: 'text', text: (ta && ta.value.trim()) || '-', x: 0.06 * W, y: 0.20 * H, w: 0.88 * W, h: 0.70 * H, pt: 20 * fs, bold: true, color: DECK.text, align: 'left', valign: 'top' });
+          const ladleTxt = (ta && ta.value.trim()) || '-';
+          // pilih huruf terbesar (pt dasar PPT 13,33x7,5 in) yang masih muat di kotak, memperhitungkan baris yang terlipat
+          let ladlePt = 16;
+          [40, 36, 32, 28, 24, 21, 18].some(function(p){
+              const cpl = Math.floor((0.88 * 13.333) / (p / 72 * 0.56));
+              const nLines = ladleTxt.split('\n').reduce(function(a, l){ return a + Math.max(1, Math.ceil(l.length / cpl)); }, 0);
+              if (nLines * p / 72 * 1.4 <= 0.68 * 7.5) { ladlePt = p; return true; }
+              return false;
+          });
+          it.push({ t: 'text', text: ladleTxt, x: 0.06 * W, y: 0.20 * H, w: 0.88 * W, h: 0.70 * H, pt: ladlePt * fs, bold: true, color: DECK.text, align: 'left', valign: 'top' });
           slides.push(it); }
 
         return slides;
@@ -3498,14 +3750,14 @@
     }
     const rgbaStr = (rgb, a) => 'rgba(' + rgb[0] + ',' + rgb[1] + ',' + rgb[2] + ',' + a + ')';
     const lightenRgb = (rgb, t) => rgb.map(x => Math.round(x + (255 - x) * t));
-    const isDashChart = chart => !!(chart.canvas && chart.canvas.closest && chart.canvas.closest('#viewExcel')) && chart.config.type !== 'doughnut';
+    const isDashChart = chart => !!(chart.canvas && chart.canvas.closest && (chart.canvas.closest('#viewExcel') || chart.canvas.closest('#viewAnalytics'))) && chart.config.type !== 'doughnut';
     const fancyChartPlugin = {
         id: 'fancyChartPlugin',
         // gradasi di bawah garis & pada batang (dipasang saat update, setelah ukuran area grafik diketahui)
         beforeDatasetsUpdate: function(chart){
             if (!isDashChart(chart) || !chart.chartArea) return;
             const area = chart.chartArea, ctx = chart.ctx;
-            const isMainLine = ds => (ds.type || chart.config.type) === 'line' && !ds.borderDash && ds.pointRadius !== 0 && typeof ds.borderColor === 'string';
+            const isMainLine = ds => (ds.type || chart.config.type) === 'line' && !ds._ghost && !ds.borderDash && ds.pointRadius !== 0 && typeof ds.borderColor === 'string';
             const singleLine = chart.data.datasets.filter(isMainLine).length === 1;   // gradasi isian hanya bila 1 garis (multi-garis jadi keruh)
             chart.data.datasets.forEach(ds => {
                 const t = ds.type || chart.config.type;
@@ -3928,22 +4180,14 @@
         statBody += `<tr><td>Avg</td>${params.map(p => { const v = validColVals(p); return `<td class="${getCellClass(p)}">${v.length ? (v.reduce((a,b) => a+b, 0) / v.length).toFixed(1) : '-'}</td>`; }).join('')}</tr>`;
         document.getElementById('statBody').innerHTML = statBody;
 
-        [chart1, chart2].forEach((chart, idx) => {
-            let m = document.getElementById(idx === 0 ? 'metric1' : 'metric2').value;
-            chart.data.labels = finalData.map(i => i.Date);
-            chart.data.datasets[0].data = finalData.map(i => { const v = i[m]; return (v === null || v === undefined || isNaN(v)) ? null : v; });
-            chart.data.datasets[0].label = m;
-            chart.update();
-        });
-
+        const anLabels = finalData.map(i => i.Date);
+        const anCol = (m) => finalData.map(i => { const v = i[m]; return (v === null || v === undefined || isNaN(v)) ? null : v; });
+        const anM1 = document.getElementById('metric1').value, anM2 = document.getElementById('metric2').value;
+        anFeed(chart1, [{ label: anM1, data: anCol(anM1) }], anLabels);
+        anFeed(chart2, [{ label: anM2, data: anCol(anM2) }], anLabels);
         const m3a2 = document.getElementById('metric3a').value;
         const m3b2 = document.getElementById('metric3b').value;
-        chart3.data.labels = finalData.map(i => i.Date);
-        chart3.data.datasets[0].data = finalData.map(i => { const v = i[m3a2]; return (v === null || v === undefined || isNaN(v)) ? null : v; });
-        chart3.data.datasets[0].label = m3a2;
-        chart3.data.datasets[1].data = finalData.map(i => { const v = i[m3b2]; return (v === null || v === undefined || isNaN(v)) ? null : v; });
-        chart3.data.datasets[1].label = m3b2;
-        chart3.update();
+        anFeed(chart3, [{ label: m3a2, data: anCol(m3a2) }, { label: m3b2, data: anCol(m3b2) }], anLabels);
 
         populateExcelDateSelect();
         if (document.getElementById('viewExcel') && document.getElementById('viewExcel').style.display !== 'none') renderExcelDashboard();
@@ -4044,7 +4288,7 @@
     }
 
     let currentTheme = "ceria";
-    function applyTheme(themeId, mode){
+    function applyThemeCore(themeId, mode){
         const theme = THEMES.find(t=> t.id===themeId) || THEMES[0];
         currentTheme = theme.id;
         document.body.setAttribute('data-theme', theme.id);
@@ -4057,6 +4301,15 @@
         const vars = computeThemeVars(theme, mode);
         Object.entries(vars).forEach(([k,v])=> document.body.style.setProperty(k, v));
     }
+    function syncRgbVars(){
+        try {
+            const cs = getComputedStyle(document.body);
+            const set = (name, src) => { const rgb = cssRgb((cs.getPropertyValue(src) || '').trim()); if (rgb) document.body.style.setProperty(name, rgb[0] + ',' + rgb[1] + ',' + rgb[2]); };
+            set('--accent-rgb', '--accent'); set('--accent2-rgb', '--accent-2'); set('--panel-rgb', '--panel');
+            set('--panel2-rgb', '--panel-2'); set('--bg-rgb', '--bg'); set('--text-rgb', '--text');
+        } catch (e) {}
+    }
+    function applyTheme(themeId, mode){ applyThemeCore(themeId, mode); syncRgbVars(); }
     function populateThemeSelect(){
         const select = document.getElementById("themeSelect");
         select.innerHTML = THEMES.map(t=> `<option value="${t.id}">${t.label}</option>`).join("");
@@ -4127,6 +4380,7 @@
             chart3.data.datasets[1].backgroundColor = hexToRgba(c.accent2, 0.08);
             chart3.update();
         }
+        anGhostColors();
     }
 
     function applyModeUI(){
@@ -4145,46 +4399,344 @@
         if (document.getElementById('viewExcel').style.display !== 'none') renderExcelDashboard();
     });
 
+    // ==================== GRAFIK ANALITIK: lebih rapi, halus, interaktif ====================
+    function anMain(color, axis){
+        return { borderColor: color, backgroundColor: hexToRgba(color, 0.12), fill: true, yAxisID: axis, data: [], _an: true, order: 1, borderWidth: 2.4 };
+    }
+    function anGhost(axis){
+        return { label: '', borderColor: 'rgba(128,128,128,.3)', backgroundColor: 'transparent', borderWidth: 1.1, fill: false, pointRadius: 0, pointHoverRadius: 0,
+                 yAxisID: axis, data: [], _ghost: true, hidden: true, order: 5 };
+    }
+    const AN_MONTHS = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
+    function anShortLabel(l){
+        const m = String(l).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        if (!m) return l;
+        return (+m[3]) + ' ' + AN_MONTHS[+m[2] - 1] + ' ' + m[1].slice(2);
+    }
+    function anFmt(v){
+        if (v === null || v === undefined || isNaN(v)) return '-';
+        const a = Math.abs(v);
+        return a >= 1000 ? Math.round(v).toLocaleString('en-US') : (a >= 100 ? v.toFixed(1) : v.toFixed(2));
+    }
+    function anBuildChart(canvasId, mains, dual){
+        const c = chartColors();
+        const dss = mains.slice();
+        mains.forEach(m => dss.push(anGhost(m.yAxisID)));
+        const scales = {
+            x: { ticks: { color: c.text, maxRotation: 0, autoSkip: true, maxTicksLimit: 10, callback: function(v){ return anShortLabel(this.getLabelForValue(v)); } }, grid: { color: c.grid, drawTicks: false } },
+            y: { type: 'linear', position: 'left', ticks: { color: dual ? c.accent : c.text, maxTicksLimit: 7 }, grid: { color: c.grid }, border: { display: false } }
+        };
+        if (dual) scales.y1 = { type: 'linear', position: 'right', ticks: { color: c.accent2, maxTicksLimit: 7 }, grid: { drawOnChartArea: false }, border: { display: false } };
+        const ch = new Chart(document.getElementById(canvasId), {
+            type: 'line',
+            data: { labels: [], datasets: dss },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                layout: { padding: { top: 18, right: 10 } },
+                spanGaps: true,
+                elements: {
+                    line: { tension: 0.38 },
+                    point: { radius: 0, hoverRadius: 6, hitRadius: 18, borderWidth: 2 }
+                },
+                scales: scales,
+                plugins: {
+                    legend: { labels: { color: c.text, usePointStyle: true, pointStyle: 'rectRounded', boxWidth: 12, filter: (it, d) => !d.datasets[it.datasetIndex]._ghost } },
+                    tooltip: {
+                        filter: it => !it.dataset._ghost,
+                        callbacks: { label: ctx => ' ' + ctx.dataset.label + ': ' + anFmt(ctx.parsed.y) }
+                    },
+                    zoom: {
+                        zoom: { wheel: { enabled: true, modifierKey: 'ctrl', speed: 0.1 }, pinch: { enabled: true }, mode: 'x' },
+                        pan: { enabled: true, mode: 'x', modifierKey: 'shift' }
+                    }
+                }
+            }
+        });
+        ch.config._an = true;
+        return ch;
+    }
+    function anSmoothArr(arr, n){
+        if (n <= 1) return arr.slice();
+        const half = Math.floor(n / 2), out = [];
+        for (let i = 0; i < arr.length; i++) {
+            if (arr[i] === null) { out.push(null); continue; }
+            let s = 0, cnt = 0;
+            for (let k = Math.max(0, i - half); k <= Math.min(arr.length - 1, i + half); k++) { if (arr[k] !== null) { s += arr[k]; cnt++; } }
+            out.push(cnt ? s / cnt : null);
+        }
+        return out;
+    }
+    function anFeed(chart, series, labels){
+        const n = parseInt((document.getElementById('anSmooth') || {}).value, 10) || 0;
+        const ds = chart.data.datasets, k = series.length;
+        if (chart._lastN !== undefined && chart._lastN !== labels.length && chart.resetZoom) { try { chart.resetZoom('none'); } catch (e) {} }
+        chart._lastN = labels.length;
+        chart.data.labels = labels;
+        series.forEach((s, i) => {
+            ds[i].data = anSmoothArr(s.data, n); ds[i].label = s.label;
+            const g = ds[k + i];
+            if (g) { g.data = n > 1 ? s.data : []; g.label = s.label + ' (data asli)'; g.hidden = !(n > 1); }
+        });
+        chart.update();
+    }
+    function anGhostColors(){
+        [[chart1, 1], [chart2, 1], [chart3, 2]].forEach(p => {
+            const ch = p[0], k = p[1];
+            if (!ch) return;
+            for (let i = 0; i < k; i++) {
+                const rgb = cssRgb(ch.data.datasets[i].borderColor), g = ch.data.datasets[k + i];
+                if (rgb && g) g.borderColor = rgbaStr(rgb, 0.30);
+            }
+            ch.update('none');
+        });
+    }
+    const anAll = () => [chart1, chart2, chart3].filter(Boolean);
+    function anZoom(f){ anAll().forEach(c => { try { c.zoom({ x: f }, undefined, 'default'); } catch (e) {} }); }
+    function anPan(px){ anAll().forEach(c => { try { c.pan({ x: px }, undefined, 'default'); } catch (e) {} }); }
+    function anResetZoom(){ anAll().forEach(c => { try { c.resetZoom(); } catch (e) {} }); }
+
+    // ---- Callout ANGKA saja untuk grafik Analitik: "Puncak" (terbaru, maks, min) atau banyak titik, posisi otomatis rapi ----
+    let anCalloutMode = 'off';
+    function anSetCallout(mode){ anCalloutMode = mode; anAll().forEach(c => c.update('none')); }
+    const anCalloutPlugin = {
+        id: 'anCallout',
+        afterDatasetsDraw: function(chart){
+            if (anCalloutMode === 'off' || !chart.config._an) return;
+            const area = chart.chartArea, xs = chart.scales && chart.scales.x;
+            if (!area || !xs) return;
+            const ctx = chart.ctx, cs = getComputedStyle(document.body);
+            const panelColor = cs.getPropertyValue('--panel').trim() || '#ffffff';
+            const cands = [], seen = {};
+            chart.data.datasets.forEach((ds, di) => {
+                if (ds._ghost || !chart.isDatasetVisible(di)) return;
+                const pts = chart.getDatasetMeta(di).data;
+                if (!pts.length) return;
+                const lo = Math.max(0, Math.ceil(xs.min)), hi = Math.min(pts.length - 1, Math.floor(xs.max));
+                const color = (typeof ds.borderColor === 'string' && ds.borderColor) || '#555';
+                const push = (i, pri) => {
+                    const key = di + ':' + i;
+                    if (seen[key] || i < 0 || !pts[i]) return;
+                    const v = ds.data[i];
+                    if (v === null || v === undefined || isNaN(v)) return;
+                    const pp = { x: pts[i].x, y: pts[i].y };   // posisi saat ini (ikut animasi), bukan target akhir yang bisa basi
+                    if (isNaN(pp.x) || isNaN(pp.y)) return;
+                    seen[key] = 1;
+                    cands.push({ di, v: +v, x: pp.x, y: pp.y, pri, color });
+                };
+                if (anCalloutMode === 'peaks') {
+                    let mx = -1, mn = -1, last = -1;
+                    for (let i = lo; i <= hi; i++) {
+                        const v = ds.data[i];
+                        if (v === null || v === undefined || isNaN(v)) continue;
+                        if (mx < 0 || v > ds.data[mx]) mx = i;
+                        if (mn < 0 || v < ds.data[mn]) mn = i;
+                        last = i;
+                    }
+                    push(last, 0); push(mx, 1); push(mn, 2);
+                } else {
+                    const step = Math.max(1, Math.ceil(46 / (area.width / Math.max(1, hi - lo + 1))));
+                    for (let i = hi, o = 0; i >= lo; i -= step, o++) push(i, o);
+                }
+            });
+            cands.sort((a, b) => a.pri - b.pri || a.di - b.di);
+            ctx.save();
+            ctx.font = 'bold 11px sans-serif'; ctx.textBaseline = 'middle'; ctx.textAlign = 'center';
+            const placed = [];
+            const hit = (a, b) => a.x < b.x + b.w + 3 && a.x + a.w + 3 > b.x && a.y < b.y + b.h + 3 && a.y + a.h + 3 > b.y;
+            cands.forEach(cd => {
+                const txt = anFmt(cd.v), w = ctx.measureText(txt).width + 12, h = 17;
+                const opts = [[-w / 2, -h - 8], [-w / 2, 8], [10, -h / 2], [-w - 10, -h / 2], [-w / 2, -h - 26], [-w / 2, 26], [10, -h - 12], [-w - 10, -h - 12], [10, 12], [-w - 10, 12]];
+                for (const o of opts) {
+                    const box = { x: cd.x + o[0], y: cd.y + o[1], w, h };
+                    if (box.x < area.left || box.x + w > area.right + 6 || box.y < area.top - 12 || box.y + h > area.bottom + 2) continue;
+                    if (placed.some(b => hit(box, b))) continue;
+                    placed.push(box);
+                    ctx.shadowColor = 'rgba(0,0,0,.25)'; ctx.shadowBlur = 8; ctx.shadowOffsetY = 3;
+                    ctx.fillStyle = panelColor; ctx.globalAlpha = 0.96;
+                    ctx.beginPath(); if (ctx.roundRect) ctx.roundRect(box.x, box.y, w, h, 8); else ctx.rect(box.x, box.y, w, h); ctx.fill();
+                    ctx.shadowColor = 'transparent'; ctx.globalAlpha = 1;
+                    ctx.strokeStyle = cd.color; ctx.lineWidth = 1.4; ctx.stroke();
+                    ctx.fillStyle = cd.color; ctx.fillText(txt, box.x + w / 2, box.y + h / 2 + 0.5);
+                    ctx.beginPath(); ctx.arc(cd.x, cd.y, 3.4, 0, Math.PI * 2); ctx.fillStyle = cd.color; ctx.fill();
+                    ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.2; ctx.stroke();
+                    return;
+                }
+            });
+            ctx.restore();
+        }
+    };
+    Chart.register(anCalloutPlugin);
+
+
+    // ==================== CACHE DATA PER BROWSER + MODE OFFLINE ====================
+    // Data terakhir dari Google Sheet disimpan di browser (IndexedDB). Saat login/refresh, data tersimpan tampil
+    // SEGERA, lalu diperbarui dari sheet. Bila server/internet tidak tersedia, dashboard tetap bisa dibuka dengan
+    // data terakhir tadi (login offline memakai akun yang pernah berhasil login di browser ini).
+    const OFFLINE_CRED_KEY = 'cmp_offline_cred_v1';
+    let offlineMode = false;
+    let _cdb = null;
+    function cacheDb(){
+        if (_cdb) return _cdb;
+        _cdb = new Promise((res, rej) => {
+            const r = indexedDB.open('rkef_data_cache_v1', 1);
+            r.onupgradeneeded = () => r.result.createObjectStore('kv');
+            r.onsuccess = () => res(r.result);
+            r.onerror = () => rej(r.error);
+        });
+        return _cdb;
+    }
+    async function dataCacheSet(k, v){
+        try {
+            const db = await cacheDb();
+            await new Promise((res, rej) => { const tx = db.transaction('kv', 'readwrite'); tx.objectStore('kv').put(v, k); tx.oncomplete = res; tx.onerror = () => rej(tx.error); });
+        } catch (e) {}
+    }
+    async function dataCacheGet(k){
+        try {
+            const db = await cacheDb();
+            return await new Promise((res, rej) => { const rq = db.transaction('kv', 'readonly').objectStore('kv').get(k); rq.onsuccess = () => res(rq.result); rq.onerror = () => rej(rq.error); });
+        } catch (e) { return null; }
+    }
+    function cacheStamp(ts){ return ts ? new Date(ts).toLocaleString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-'; }
+    async function restoreFromCache(){
+        try {
+            const a = await dataCacheGet('analytics');
+            if (a && a.rows && a.rows.length && !analyticsData.length) {
+                analyticsData = a.rows; processData();
+                const el = document.getElementById('syncStatus');
+                if (el) el.innerText = 'Data tersimpan di browser (sinkron terakhir ' + cacheStamp(a.ts) + ') — ' + a.rows.length + ' baris.';
+            }
+            const sel = document.getElementById('sheetYearSelect');
+            const p = await dataCacheGet('produksi:' + (sel ? sel.value : 'Data 2026'));
+            if (p && p.rows && p.rows.length && !rawData.length) {
+                rawData = p.rows; ladleByDate = p.ladle || {}; ladleFilledKey = '';
+                populateExcelDateSelect();
+                if (document.getElementById('viewExcel').style.display !== 'none') renderExcelDashboard();
+                const el = document.getElementById('syncStatusProduksi');
+                if (el) el.innerText = 'Data tersimpan di browser (sinkron terakhir ' + cacheStamp(p.ts) + ') — ' + p.rows.length + ' baris.';
+            }
+            return !!((a && a.rows && a.rows.length) || (p && p.rows && p.rows.length));
+        } catch (e) { return false; }
+    }
+    async function pbkdf2Hex(pw, saltHex){
+        const enc = new TextEncoder();
+        const key = await crypto.subtle.importKey('raw', enc.encode(pw), 'PBKDF2', false, ['deriveBits']);
+        const salt = Uint8Array.from(saltHex.match(/.{2}/g).map(h => parseInt(h, 16)));
+        const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', salt, iterations: 150000, hash: 'SHA-256' }, key, 256);
+        return Array.from(new Uint8Array(bits)).map(b => b.toString(16).padStart(2, '0')).join('');
+    }
+    async function offlineCredSave(username, password, profile){
+        try {
+            if (!(window.crypto && crypto.subtle)) return;
+            const map = JSON.parse(localStorage.getItem(OFFLINE_CRED_KEY) || '{}');
+            const salt = Array.from(crypto.getRandomValues(new Uint8Array(16))).map(b => b.toString(16).padStart(2, '0')).join('');
+            map[String(username).toLowerCase()] = { salt, hash: await pbkdf2Hex(password, salt), profile, ts: Date.now() };
+            localStorage.setItem(OFFLINE_CRED_KEY, JSON.stringify(map));
+        } catch (e) {}
+    }
+    async function tryOfflineLogin(username, password){
+        try {
+            if (!(window.crypto && crypto.subtle)) return false;
+            const map = JSON.parse(localStorage.getItem(OFFLINE_CRED_KEY) || '{}');
+            const rec = map[String(username).toLowerCase()];
+            if (!rec) { showAuthMsg('Tidak bisa terhubung ke server, dan akun ini belum pernah login di browser ini.'); return true; }
+            if ((await pbkdf2Hex(password, rec.salt)) !== rec.hash) { showAuthMsg('Username atau password salah.'); return true; }
+            const a = await dataCacheGet('analytics'), p = await dataCacheGet('produksi:Data 2026');
+            if (!(a && a.rows && a.rows.length) && !(p && p.rows && p.rows.length)) { showAuthMsg('Belum ada data tersimpan di browser ini. Login online dulu minimal satu kali.'); return true; }
+            offlineMode = true;
+            currentUser = { username: rec.profile.username, token: '', fullName: rec.profile.fullName, jobTitle: rec.profile.jobTitle, role: rec.profile.role, offline: true };
+            enterApp();
+            return true;
+        } catch (e) { return false; }
+    }
+    function showOfflineBanner(){
+        const b = document.getElementById('offlineBanner');
+        if (!b) return;
+        b.style.display = '';
+        b.innerHTML = '📴 <b>Mode offline</b> — menampilkan data terakhir yang tersimpan di browser ini. Fitur yang butuh server (sinkron, input, upload, export dengan password) dinonaktifkan. <button class="btn btn-sm btn-primary" onclick="location.reload()">Sambungkan ulang</button>';
+    }
+    window.addEventListener('offline', function(){ const h = document.getElementById('offlineHint'); if (h) h.style.display = 'block'; });
+    window.addEventListener('online', function(){ const h = document.getElementById('offlineHint'); if (h) h.style.display = 'none'; });
+    document.addEventListener('DOMContentLoaded', function(){ if (!navigator.onLine) { const h = document.getElementById('offlineHint'); if (h) h.style.display = 'block'; } });
+
+    // ==================== CAPTION BERGANTI (produksi & keselamatan) ====================
+    const CAPTION_MINUTES = 3;   // ganti caption tiap sekian menit
+    const CAPTIONS = [
+        { k: 's', t: 'Keselamatan adalah prioritas utama: tidak ada target produksi yang sebanding dengan nyawa dan kesehatan pekerja.' },
+        { k: 'p', t: 'Level slag dan FeNi yang stabil di dalam range menjaga tapping tetap aman dan terkontrol.' },
+        { k: 's', t: 'Gunakan APD lengkap sesuai area kerja: helm, kacamata, sarung tangan, pakaian tahan panas, dan sepatu safety.' },
+        { k: 'p', t: 'Pemakaian power yang stabil membantu menjaga suhu bottom dan sidewall serta umur refraktori furnace.' },
+        { k: 's', t: 'Sebelum perawatan atau perbaikan, pastikan isolasi energi dan LOTO (Lock Out Tag Out) sudah terpasang.' },
+        { k: 'p', t: 'Data yang diukur dan dicatat tepat waktu adalah dasar keputusan operasi yang baik.' },
+        { k: 's', t: 'Area tapping dan skimming sangat panas: jaga jarak aman dan jangan berdiri di jalur semburan material.' },
+        { k: 'p', t: 'Menekan Ni loss saat skimming berarti lebih banyak nikel yang terbawa menjadi produk.' },
+        { k: 's', t: 'Jangan dekati logam cair atau slag dengan alat yang basah atau lembap — air dapat memicu ledakan uap.' },
+        { k: 'p', t: 'GHE (energi listrik per ton calcine) yang rendah menandakan pemakaian listrik yang efisien.' },
+        { k: 's', t: 'Laporkan setiap kondisi tidak aman dan nyaris celaka (near miss): satu laporan hari ini bisa mencegah kecelakaan besok.' },
+        { k: 'p', t: 'Pantau tren suhu dan tekanan setiap shift — penyimpangan kecil yang terdeteksi dini lebih mudah dikoreksi.' },
+        { k: 's', t: 'Rasa terbiasa bukan berarti aman: tetap ikuti SOP walaupun pekerjaan sudah rutin.' },
+        { k: 'p', t: 'Ladle dan brick sleeve yang terawat mendukung tapping yang lancar dan umur peralatan yang lebih panjang.' },
+        { k: 's', t: 'Pastikan jalur evakuasi, APAR, dan titik kumpul selalu bebas dari hambatan.' },
+        { k: 'p', t: 'Konsistensi pasta elektroda menjaga elektroda tetap stabil dan mengurangi risiko gangguan operasi.' },
+        { k: 's', t: 'Berhenti bekerja bila ragu: hak Stop Work berlaku untuk semua orang tanpa terkecuali.' },
+        { k: 'p', t: 'Serah terima shift yang rapi: sampaikan kondisi furnace, ladle, dan pekerjaan yang belum selesai.' },
+        { k: 's', t: 'Lakukan Take 5 sebelum mulai kerja: lihat sekeliling, kenali bahaya, tentukan langkah yang aman.' },
+        { k: 'p', t: 'Setiap tapping yang aman dan lancar adalah kontribusi nyata untuk target produksi bulanan.' },
+        { k: 's', t: 'Istirahat dan minum yang cukup mencegah kelelahan dan heat stress di area panas.' },
+        { k: 'p', t: 'Target harian tercapai dari disiplin kecil yang dilakukan konsisten, shift demi shift.' },
+        { k: 's', t: 'Komunikasi jelas saat tapping dan pemindahan ladle: pastikan semua orang tahu perannya.' },
+        { k: 's', t: 'Gunakan tiga titik kontak saat naik-turun tangga dan platform, dan jangan terburu-buru.' }
+    ];
+    let captionIdx = -1, captionTimer = null;
+    function captionShow(i, animate){
+        const txt = document.getElementById('tickerText'), tag = document.getElementById('tickerTag'), bar = document.getElementById('tickerBar');
+        if (!txt) return;
+        captionIdx = ((i % CAPTIONS.length) + CAPTIONS.length) % CAPTIONS.length;
+        const c = CAPTIONS[captionIdx];
+        const apply = function(){
+            txt.textContent = c.t;
+            tag.textContent = c.k === 's' ? '⚠ K3 · KESELAMATAN' : '⚙ PRODUKSI';
+            tag.className = 'ticker-tag' + (c.k === 's' ? '' : ' prod');
+            txt.classList.remove('out');
+            if (bar) { bar.style.setProperty('--tick-ms', (CAPTION_MINUTES * 60000) + 'ms'); bar.style.animation = 'none'; void bar.offsetWidth; bar.style.animation = ''; }
+        };
+        if (animate) { txt.classList.add('out'); setTimeout(apply, 650); } else apply();
+    }
+    function captionNext(){ captionShow(captionIdx + 1, true); }
+    function captionStart(){
+        const slot = Math.floor(Date.now() / (CAPTION_MINUTES * 60000));
+        captionShow(slot, false);
+        clearInterval(captionTimer);
+        captionTimer = setInterval(captionNext, CAPTION_MINUTES * 60000);
+        const t = document.getElementById('captionTicker');
+        if (t && !t._bound) { t._bound = true; t.addEventListener('click', function(){ captionNext(); clearInterval(captionTimer); captionTimer = setInterval(captionNext, CAPTION_MINUTES * 60000); }); }
+    }
+
+    // ==================== Tombol FX (animasi latar) ====================
+    (function(){
+        function applyFx(on){
+            document.body.classList.toggle('fx-off', !on);
+            const l = document.getElementById('fxToggleLabel'); if (l) l.textContent = on ? 'FX' : 'FX off';
+        }
+        document.addEventListener('DOMContentLoaded', function(){
+            let on = true; try { on = localStorage.getItem('rkef_fx') !== '0'; } catch (e) {}
+            applyFx(on);
+            const b = document.getElementById('fxToggle');
+            if (b) b.addEventListener('click', function(){ on = !on; try { localStorage.setItem('rkef_fx', on ? '1' : '0'); } catch (e) {} applyFx(on); });
+        });
+    })();
+
     $(document).ready(function() {
         initLayout();
         applyTheme(currentTheme, chartMode);
         levelRangeLoad();
         trafoTitlesLoad();
         inputRefreshTemplateInfo();
-        const initColors = chartColors();
-        const cfg = { 
-            responsive: true, 
-            maintainAspectRatio: false, 
-            scales: { 
-                x: { ticks: { color: initColors.text }, grid: { color: initColors.grid } }, 
-                y: { ticks: { color: initColors.text }, grid: { color: initColors.grid } } 
-            }, 
-            plugins: { 
-                legend: { labels: { color: initColors.text } } 
-            } 
-        };
-        chart1 = new Chart(document.getElementById('chart1'), { type: 'line', data: { datasets: [{ borderColor: '#00d4ff', backgroundColor: 'rgba(0, 212, 255, 0.1)', fill: true, data: [] }] }, options: cfg });
-        chart2 = new Chart(document.getElementById('chart2'), { type: 'line', data: { datasets: [{ borderColor: '#ffc107', backgroundColor: 'rgba(255, 193, 7, 0.1)', fill: true, data: [] }] }, options: JSON.parse(JSON.stringify(cfg)) });
-
-        const cfgDual = {
-            responsive: true,
-            maintainAspectRatio: false,
-            interaction: { mode: 'index', intersect: false },
-            scales: {
-                x: { ticks: { color: initColors.text }, grid: { color: initColors.grid } },
-                y: { type: 'linear', position: 'left', ticks: { color: initColors.accent }, grid: { color: initColors.grid } },
-                y1: { type: 'linear', position: 'right', ticks: { color: initColors.accent2 }, grid: { drawOnChartArea: false } }
-            },
-            plugins: { legend: { labels: { color: initColors.text } } }
-        };
-        chart3 = new Chart(document.getElementById('chart3'), {
-            type: 'line',
-            data: { datasets: [
-                { borderColor: '#00d4ff', backgroundColor: 'rgba(0,212,255,0.08)', fill: false, yAxisID: 'y', data: [] },
-                { borderColor: '#ff5fa2', backgroundColor: 'rgba(255,95,162,0.08)', fill: false, yAxisID: 'y1', data: [] }
-            ] },
-            options: cfgDual
-        });
+        if (window.ChartZoom) { try { Chart.register(window.ChartZoom); } catch (e) {} }
+        chart1 = anBuildChart('chart1', [anMain('#00d4ff', 'y')], false);
+        chart2 = anBuildChart('chart2', [anMain('#ffc107', 'y')], false);
+        chart3 = anBuildChart('chart3', [anMain('#00d4ff', 'y'), anMain('#ff5fa2', 'y1')], true);
 
         applyModeUI();
         populateThemeSelect();
