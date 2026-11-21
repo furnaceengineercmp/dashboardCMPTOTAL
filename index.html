@@ -1746,6 +1746,50 @@
     }
 
     // Panel "Analitik Data" -> selalu dari sheet "Data"
+    // Sheet "Data" bisa tertinggal (mis. berhenti di akhir Oktober) padahal sheet tahunan ("Data 2026") sudah terisi lebih baru.
+    // Baris tanggal yang belum ada di "Data" diambil dari sheet tahunan, kolomnya dicocokkan ke nama kolom Analitik (nama persis, alias, lalu pencocokan longgar).
+    function anPickRaw(row, p){
+        const keys = Object.keys(row), np = normKey(p);
+        const exact = keys.find(k => normKey(k) === np);
+        if (exact !== undefined && row[exact] !== '' && row[exact] !== null && row[exact] !== undefined) return row[exact];
+        let aliasFound = false;
+        for (const fk in EXCEL_FIELDS) {
+            if (EXCEL_FIELDS[fk].some(a => normKey(a) === np)) {
+                aliasFound = true;
+                for (const a of EXCEL_FIELDS[fk]) {                       // hanya nama persis (tanpa pencocokan longgar) agar tidak nyasar ke kolom lain
+                    const kk = keys.find(k => normKey(k) === normKey(a));
+                    if (kk !== undefined && row[kk] !== '' && row[kk] !== null && row[kk] !== undefined) return row[kk];
+                }
+            }
+        }
+        return aliasFound ? undefined : getParamVal(row, p);   // kolom yang punya alias tidak boleh "nyasar" ke kolom lain lewat pencocokan longgar
+    }
+    function anTranslateRow(row){
+        const o = { Date: row.Date };
+        params.forEach(p => { const v = anPickRaw(row, p); if (v !== undefined && v !== null) o[p] = v; });
+        return o;
+    }
+    async function loadAnalyticsExtraRows(base){
+        const out = [];
+        try {
+            const lastBase = base.reduce((m, r) => (r.Date && r.Date > m) ? r.Date : m, '');
+            const y0 = lastBase ? parseInt(lastBase.slice(0, 4), 10) : new Date().getFullYear();
+            const y1 = Math.max(new Date().getFullYear(), y0);
+            const have = new Set(base.map(r => r.Date));
+            for (let y = y0; y <= y1; y++) {
+                let yr;
+                try { yr = await fetchSheetData('Data ' + y); } catch (e) { continue; }       // sheet tahun itu belum ada -> lewati
+                yr.forEach(r => {
+                    if (!r.Date || (lastBase && r.Date <= lastBase) || have.has(r.Date)) return;
+                    const o = anTranslateRow(r);
+                    if (!params.some(p => validNum(o[p]) !== null)) return;                  // baris kosong/belum terisi tidak dipakai
+                    have.add(r.Date); out.push(o);
+                });
+            }
+        } catch (e) {}
+        return out;
+    }
+
     async function loadAnalyticsData(showAlertOnError) {
         const statusEl = document.getElementById('syncStatus');
         if (!SHEET_WEBAPP_URL || SHEET_WEBAPP_URL.indexOf('PASTE_URL') !== -1) {
@@ -1753,11 +1797,14 @@
             return;
         }
         try {
-            analyticsData = await fetchSheetData('Data');
+            const base = await fetchSheetData('Data');
+            const extra = await loadAnalyticsExtraRows(base);       // tanggal yang belum ada di sheet "Data" diambil dari "Data 2026", dst.
+            analyticsData = base.concat(extra).sort((a, b) => a.Date < b.Date ? -1 : a.Date > b.Date ? 1 : 0);
             dataCacheSet('analytics', { rows: analyticsData, ts: Date.now() });
             processData();
             const now = new Date();
-            if (statusEl) statusEl.innerText = 'Analitik Data tersinkron (Data): ' + now.toLocaleTimeString('id-ID') + ' — ' + analyticsData.length + ' baris.';
+            const lastD = analyticsData.length ? analyticsData[analyticsData.length - 1].Date : '-';
+            if (statusEl) statusEl.innerText = 'Analitik Data tersinkron: ' + now.toLocaleTimeString('id-ID') + ' — ' + analyticsData.length + ' baris, data terakhir ' + lastD + (extra.length ? ' (+' + extra.length + ' hari dari sheet tahunan)' : '') + '.';
         } catch (err) {
             if (statusEl) statusEl.innerText = 'Gagal sinkron Analitik Data: ' + err.message + (analyticsData.length ? ' — menampilkan data terakhir yang tersimpan.' : '');
             if (showAlertOnError) alert('Gagal memuat data Analitik Data:\n' + err.message);
@@ -4344,15 +4391,19 @@
             // Analisis korelasi untuk grafik ketiga
             const m3a = document.getElementById('metric3a').value;
             const m3b = document.getElementById('metric3b').value;
+            // Satu baris (satu titik sumbu X) HANYA dihitung bila KEDUA nilainya valid: bukan kosong, #error/N/A, 0, atau
+            // mendekati 0 (di bawah 1% dari nilai tipikal kolom itu, mis. sisa pembulatan saat unit mati). Jika salah satu tidak valid,
+            // seluruh baris itu dilewati dari analisis korelasi (grafik tetap menampilkan datanya apa adanya).
+            const medAbs = (p) => { const v = finalData.map(i => i[p]).filter(x => x !== null && x !== undefined && !isNaN(x) && x !== 0).map(Math.abs).sort((a, b) => a - b); return v.length ? v[Math.floor(v.length / 2)] : 0; };
+            const thrA = Math.max(1e-9, 0.01 * medAbs(m3a)), thrB = Math.max(1e-9, 0.01 * medAbs(m3b));
+            const okv = (x, t) => x !== null && x !== undefined && !isNaN(x) && Math.abs(x) > t;
             const pairXs = [], pairYs = [];
             finalData.forEach(i => {
                 const a = i[m3a], b = i[m3b];
-                if (a !== null && a !== undefined && !isNaN(a) && b !== null && b !== undefined && !isNaN(b)) {
-                    pairXs.push(a); pairYs.push(b);
-                }
+                if (okv(a, thrA) && okv(b, thrB)) { pairXs.push(a); pairYs.push(b); }
             });
             const r = pearsonCorrelation(pairXs, pairYs);
-            document.getElementById('kpiCorrelation').innerText = correlationText(m3a, m3b, r);
+            document.getElementById('kpiCorrelation').innerText = correlationText(m3a, m3b, r) + '  [dipakai ' + pairXs.length + ' dari ' + finalData.length + ' titik]';
         } else {
             ['kpiNi', 'kpiTemp', 'kpiTotal'].forEach(id => document.getElementById(id).innerText = "0");
             document.getElementById('kpiCorrelation').innerText = '-';
