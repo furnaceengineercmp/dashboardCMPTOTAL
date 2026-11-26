@@ -517,6 +517,13 @@
             .an-dock{ bottom:calc(86px + env(safe-area-inset-bottom)) !important; }
         }
         @media print{ .mobile-nav{ display:none !important; } }
+
+        /* --- Saat export: ratakan efek mahal (bayangan, gradasi, glow) agar html2canvas jauh lebih cepat --- */
+        body.exporting *{ box-shadow:none !important; text-shadow:none !important; filter:none !important; }
+        body.exporting .card, body.exporting .excel-panel, body.exporting .excel-banner, body.exporting .excel-stat,
+        body.exporting .excel-pack-row, body.exporting .lvl-box, body.exporting .excel-drill-item, body.exporting #ladleList{
+            background-image:none !important; background-color:var(--panel) !important; }
+        body.exporting .excel-panel-title{ background:rgba(var(--accent-rgb),.14) !important; }
     </style>
 </head>
 <body data-mode="light">
@@ -1019,6 +1026,21 @@
 
   <div class="row">
     <div class="col-lg-12">
+      <div class="excel-panel no-export" id="issuePanel">
+        <div class="excel-panel-title">🛠️ Furnace Issued / Notes</div>
+        <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+          <span class="small text-secondary">Tanggal laporan: <b id="issueDateLabel">-</b></span>
+          <button class="btn btn-sm btn-info" type="button" onclick="issueSave()">💾 Simpan ke GSheet</button>
+          <span class="small text-secondary" id="issueStatus"></span>
+        </div>
+        <textarea id="issueText" class="form-control" rows="6" style="font-size:1.05rem;line-height:1.7;" oninput="issueTyped()" placeholder="Tulis satu poin per baris (otomatis diberi nomor di slide), contoh:&#10;Average power 38 MW (Ramp up power to 60 MW)&#10;East-side furnace roof TC reading still inaccurate, need check.&#10;Gantry crane need check."></textarea>
+        <div class="excel-note">Berupa deskripsi saja. Tersimpan per tanggal laporan; saat Export PPT/PDF otomatis menjadi slide "Furnace Issued/Notes" (setelah slide dashboard, sebelum slide thermal). Kosongkan kolom ini bila tidak ingin slide-nya.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="col-lg-12">
       <div class="excel-panel no-export" id="thermalPanel">
         <div class="excel-panel-title">🌡️ Thermal Corner — Import Laporan Foto Thermal</div>
         <div class="row g-2 align-items-end mb-2">
@@ -1053,9 +1075,18 @@
             <label class="form-label small text-secondary mb-1 d-block">Tanggal</label>
             <input type="date" id="capDate" class="form-control form-control-sm" onchange="capRefreshSaved()">
           </div>
-          <div class="col-md-3">
-            <label class="form-label small text-secondary mb-1 d-block">Judul slide (opsional)</label>
-            <input type="text" id="capTitle" class="form-control form-control-sm" placeholder="mis. Corner Delta Temperature">
+          <div class="col-md-4">
+            <label class="form-label small text-secondary mb-1 d-block">Judul slide (pilih dari daftar atau ketik sendiri)</label>
+            <select id="capTitlePreset" class="form-select form-select-sm mb-1" onchange="capPresetPick(this)">
+              <option value="">✏️ Ketik sendiri / kosongkan</option>
+              <option>North Tapping Depth</option>
+              <option>South Tapping Depth</option>
+              <option>Trend of Power vs Slag Level vs Side Wall Temp vs Freeboard Temp</option>
+              <option>DT Furnace Water Cooling (Tapping &amp; Skimming Hole)</option>
+              <option>Upper Sidewall/Endwall</option>
+              <option>Lower Sidewall/Endwall</option>
+            </select>
+            <input type="text" id="capTitle" class="form-control form-control-sm" placeholder="mis. Corner Delta Temperature" oninput="capPresetSync()">
           </div>
           <div class="col-md-3">
             <label class="form-label small text-secondary mb-1 d-block">Label tanggal di slide (kosong = otomatis)</label>
@@ -1229,13 +1260,18 @@
     // POST dikirim sebagai text/plain (bukan application/json) khusus supaya browser
     // TIDAK mengirim CORS preflight (OPTIONS) ke Apps Script — Apps Script webapp tidak
     // bisa merespons preflight, jadi ini trik standar yang dipakai untuk fetch ke Apps Script.
-    async function authPost(payload){
-        const res = await fetch(AUTH_WEBAPP_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-            body: JSON.stringify(payload)
-        });
-        return res.json();
+    async function authPost(payload, timeoutMs){
+        const ctl = (timeoutMs && window.AbortController) ? new AbortController() : null;
+        const tm = ctl ? setTimeout(() => ctl.abort(), timeoutMs) : null;
+        try {
+            const res = await fetch(AUTH_WEBAPP_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                body: JSON.stringify(payload),
+                signal: ctl ? ctl.signal : undefined
+            });
+            return await res.json();
+        } finally { if (tm) clearTimeout(tm); }
     }
 
     // Koneksi ke Apps Script kadang terputus ("Failed to fetch"). Untuk aksi yang aman diulang (upload thermal/capture, simpan input)
@@ -1973,8 +2009,9 @@
             if (deckMode) deckBuildSlides(pageW, pageH, 0.877).forEach(items => thermalRenderPdf(pdf, items, pageW, pageH));
             for (const panel of (deckMode ? [] : panels)) {
                 if (btn) btn.innerText = '⏳ Menyiapkan ' + (panels.indexOf(panel) + 1) + '/' + panels.length + '...';
+                await new Promise(r => setTimeout(r, 0));   // beri napas ke browser agar tombol/halaman tidak membeku
                 const canvas = await excelCapture(panel, bg);
-                const imgData = canvas.toDataURL('image/jpeg', 0.92);
+                const imgData = canvas.toDataURL('image/jpeg', 0.88);
                 const ratio = canvas.height / canvas.width;
                 let w = usableW, h = w * ratio;
                 if (h > maxH) { h = maxH; w = h / ratio; }
@@ -1990,6 +2027,8 @@
                 cursorY += h + gap;
             }
 
+            const issueItemsD = issueBuildItems(pageW, pageH, 0.877);
+            if (issueItemsD) thermalRenderPdf(pdf, issueItemsD, pageW, pageH);
             if (btn) btn.innerText = '⏳ Menunggu foto thermal/capture...';
             const thermalSlides = await thermalP;
             thermalSlides.forEach(s => thermalRenderPdf(pdf, thermalBuildItems(s, pageW, pageH, 0.877), pageW, pageH));
@@ -2097,8 +2136,9 @@
             if (deckMode) deckBuildSlides(13.33, 7.5, 1).forEach(items => thermalRenderPptx(pptx, items));
             for (const panel of (deckMode ? [] : panels)) {
                 if (btn) btn.innerText = '⏳ Menyiapkan ' + (panels.indexOf(panel) + 1) + '/' + panels.length + '...';
+                await new Promise(r => setTimeout(r, 0));   // beri napas ke browser agar tombol/halaman tidak membeku
                 const canvas = await excelCapture(panel, getComputedStyle(document.body).getPropertyValue('--panel') || '#ffffff');
-                const imgData = canvas.toDataURL('image/jpeg', 0.92);
+                const imgData = canvas.toDataURL('image/jpeg', 0.88);
                 const slide = pptx.addSlide();
                 addSlideChrome(slide);
                 const ratio = canvas.height / canvas.width;
@@ -2107,6 +2147,8 @@
                 if (h > maxH) { h = maxH; w = h / ratio; }
                 slide.addImage({ data: imgData, x: (13.33 - w) / 2, y: 0.65 + (6.65 - h) / 2, w, h });
             }
+            const issueItemsP = issueBuildItems(13.33, 7.5, 1);
+            if (issueItemsP) thermalRenderPptx(pptx, issueItemsP);
             if (btn) btn.innerText = '⏳ Menunggu foto thermal/capture...';
             const thermalSlides = await thermalP;
             thermalSlides.forEach(s => thermalRenderPptx(pptx, thermalBuildItems(s, 13.33, 7.5, 1)));
@@ -2143,7 +2185,7 @@
     // diganti <div> yang menampilkan tiap baris ke bawah.
     function excelCapture(panel, bg){
         return html2canvas(panel, {
-            backgroundColor: bg, scale: 1.6,
+            backgroundColor: bg, scale: 1.3,
             // html2canvas menyalin SELURUH halaman tiap kali dipanggil: lewati tampilan lain (tabel Analitik besar, dll.)
             // dan canvas grafik milik panel lain supaya jauh lebih cepat.
             ignoreElements: function (el) {
@@ -2371,6 +2413,43 @@
         box.innerHTML = h + '</tbody></table></div>';
         box.querySelectorAll('.thermal-code').forEach(s => { s.value = thermalDraft[+s.dataset.i].code || ''; });
     }
+    // Perkecil foto sebelum diunggah (maks 1600 px, JPEG 0,85): isi kiriman jauh lebih kecil -> lebih jarang gagal, upload & export lebih cepat
+    function thermalCompress(dataUrl){
+        return new Promise(res => {
+            if (!dataUrl || dataUrl.length < 350000) { res(dataUrl); return; }
+            const im = new Image();
+            im.onload = () => {
+                const s = Math.min(1, 1600 / Math.max(im.naturalWidth, im.naturalHeight));
+                const c = document.createElement('canvas');
+                c.width = Math.round(im.naturalWidth * s); c.height = Math.round(im.naturalHeight * s);
+                const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(im, 0, 0, c.width, c.height);
+                const out = c.toDataURL('image/jpeg', 0.85);
+                res(out.length < dataUrl.length ? out : dataUrl);
+            };
+            im.onerror = () => res(dataUrl);
+            im.src = dataUrl;
+        });
+    }
+    // Kirim 1 foto. Bila koneksi putus, JANGAN langsung kirim ulang foto besar: cek dulu ke daftar GSheet apakah kiriman pertama
+    // sebenarnya sudah masuk (balasan saja yang hilang). Baru bila belum masuk, kirim ulang (maks 3x, dengan batas waktu 75 dtk).
+    async function thermalUploadOne(payload, beforeIds, onRetry){
+        const key = payload.date + '|' + payload.code;
+        let lastErr;
+        for (let k = 1; k <= 3; k++) {
+            try { return await authPost(payload, 75000); }
+            catch (e) {
+                lastErr = e;
+                try {
+                    await new Promise(r => setTimeout(r, 1200));
+                    const rows = await thermalFetchList();
+                    const now = rows.find(r => r.date === payload.date && r.code === payload.code);
+                    if (now && now.fileId !== beforeIds[key]) return { ok: true, viaCheck: true };   // ternyata sudah tersimpan
+                } catch (e2) {}
+                if (k < 3) { if (onRetry) onRetry(k + 1, 3); await new Promise(r => setTimeout(r, 1500 * k)); }
+            }
+        }
+        throw new Error('koneksi ke server terputus (sudah dicoba 3x) — cek jaringan lalu klik Simpan lagi; foto yang sudah tersimpan tidak dikirim ulang');
+    }
     async function thermalSaveDraft(){
         const st = document.getElementById('thermalStatus');
         const box = document.getElementById('thermalDraftBox');
@@ -2388,12 +2467,15 @@
         const dup = Object.keys(seen).filter(k => seen[k] > 1);
         if (dup.length && !confirm('Ada tanggal+kode yang dobel (' + dup.join(', ') + '). Foto yang terakhir akan menimpa yang sebelumnya. Lanjutkan?')) return;
         let ok = 0;
+        const beforeIds = {};
+        try { (await thermalFetchList()).forEach(r => { beforeIds[r.date + '|' + r.code] = r.fileId; }); } catch (e) {}
         uploadBusy++;
         try {
         for (const j of jobs) {
             st.textContent = 'Menyimpan ' + (ok + 1) + ' / ' + jobs.length + ' (' + j.date + ' ' + j.code + ')...';
             try {
-                const r = await authPostRetry({ action: 'thermalUpload', username: currentUser.username, token: currentUser.token, date: j.date, code: j.code, fileName: j.r.fileName || '', mime: 'image/jpeg', data: j.r.dataUrl.split(',')[1] },
+                const small = await thermalCompress(j.r.dataUrl);
+                const r = await thermalUploadOne({ action: 'thermalUpload', username: currentUser.username, token: currentUser.token, date: j.date, code: j.code, fileName: j.r.fileName || '', mime: 'image/jpeg', data: small.split(',')[1] }, beforeIds,
                     (n, t) => { st.textContent = 'Koneksi terputus, mencoba ulang ' + n + '/' + t + ' (' + j.date + ' ' + j.code + ')...'; });
                 if (!r || !r.ok) throw new Error((r && r.message) || 'backend menolak (pastikan Code.gs sudah diperbarui)');
                 j.r.saved = true;
@@ -2445,13 +2527,14 @@
     }
     async function imgCacheSet(id, data){
         imgMem.set(id, data);
+        if (imgMem.size > 60) imgMem.delete(imgMem.keys().next().value);   // memori dibatasi; cadangan penuh ada di IndexedDB
         const db = await imgDb();
         if (!db) return;
         try {
             const store = db.transaction('img', 'readwrite').objectStore('img');
             store.put(data, id);
             const cnt = store.count();
-            cnt.onsuccess = () => { if (cnt.result > 150) store.clear(); };   // batasi ukuran cache
+            cnt.onsuccess = () => { if (cnt.result > 500) store.clear(); };   // batasi ukuran cache
         } catch (e) {}
     }
     async function imgCacheDelete(id){
@@ -2536,6 +2619,7 @@
             if (i.t === 'rect') slide.addShape('rect', { x: i.x, y: i.y, w: i.w, h: i.h, fill: { color: i.color }, line: { type: 'none' } });
             else if (i.t === 'rrect') slide.addShape('roundRect', { x: i.x, y: i.y, w: i.w, h: i.h, fill: { color: i.color }, line: i.border ? { color: i.border, width: i.bw || 1 } : { type: 'none' }, rectRadius: i.r || 0.08 });
             else if (i.t === 'image') slide.addImage({ data: i.data, x: i.x, y: i.y, w: i.w, h: i.h });
+            else if (i.t === 'numlist') slide.addText(i.lines.map(l => ({ text: l, options: { bullet: { type: 'number' }, breakLine: true } })), { x: i.x, y: i.y, w: i.w, h: i.h, fontFace: 'Arial', fontSize: i.pt, color: i.color, valign: 'top', align: 'left', margin: 0, paraSpaceAfter: Math.round(i.pt * 0.5) });
             else {
                 const base = { x: i.x, y: i.y, w: i.w, h: i.h, fontFace: 'Arial', valign: i.valign || 'middle', align: i.align || 'left', margin: 0 };
                 if (Array.isArray(i.text)) {
@@ -2591,6 +2675,17 @@
                 else pdf.roundedRect(i.x, i.y, i.w, i.h, i.r || 2, i.r || 2, 'F');
             }
             else if (i.t === 'image') { pdf.addImage(i.data, i.fmt || 'JPEG', i.x, i.y, i.w, i.h); }
+            else if (i.t === 'numlist') {
+                const mm = 0.3528, lh = i.pt * mm * 1.3, indent = i.pt * mm * 2.0, tc = hexToRgb(i.color);
+                pdf.setFont('helvetica', 'normal'); pdf.setFontSize(i.pt); pdf.setTextColor(tc.r, tc.g, tc.b);
+                let y = i.y;
+                i.lines.forEach((l, n) => {
+                    const wrapped = pdf.splitTextToSize(l, i.w - indent);
+                    pdf.text((n + 1) + '.', i.x, y + lh / 2, { baseline: 'middle' });
+                    wrapped.forEach((ln, k) => pdf.text(ln, i.x + indent, y + lh * k + lh / 2, { baseline: 'middle' }));
+                    y += lh * wrapped.length + lh * 0.4;
+                });
+            }
             else pdfDrawItemText(pdf, i);
         });
     }
@@ -3097,6 +3192,13 @@
             try { await Promise.all([thermalPrepareSlides(date), capturePrepareSlides(date), trafoPrepareSlides(date)]); } catch (e) {}
         }, 2500);
     }
+    function capPresetPick(sel){ if (sel.value) { document.getElementById('capTitle').value = sel.value; } }
+    function capPresetSync(){
+        const sel = document.getElementById('capTitlePreset'), v = document.getElementById('capTitle').value;
+        if (!sel) return;
+        const hit = Array.from(sel.options).find(o => o.value && o.value === v);
+        sel.value = hit ? hit.value : '';
+    }
     function capSyncDate(d){ const el = document.getElementById('capDate'); if (el && !el.value) { el.value = d; capRefreshSaved(); } }
 
     function capBlobToJpeg(blob){
@@ -3565,6 +3667,7 @@
         fillLadleFromSheet(row.Date);
         capSyncDate(row.Date);
         schedulePrefetch(row.Date);
+        issueSync(row.Date);
 
         // ---- POWER ----
         document.getElementById('excPower').innerText = fmtNum(getVal(row, 'power'));
@@ -5029,6 +5132,82 @@
         sync();
     }
     document.addEventListener('DOMContentLoaded', mobileNavInit);
+
+    // ==================== FURNACE ISSUED / NOTES (deskripsi -> slide "Furnace Issued/Notes" di PPT/PDF) ====================
+    const ISSUE_ROLES = ['admin', 'engineer', 'supervisor'];   // harus sama dengan ISSUE_ROLES di Code.gs
+    let issueDate = '', issueTimer = null;
+    function issueLocalKey(d){ return 'rkef_issue_' + d; }
+    function issueStatus(msg, cls){ const el = document.getElementById('issueStatus'); if (el) { el.className = 'small ' + (cls || 'text-secondary'); el.textContent = msg; } }
+    function issueLocalGet(d){ try { return JSON.parse(localStorage.getItem(issueLocalKey(d)) || 'null'); } catch (e) { return null; } }
+    function issueLocalSet(d, t, saved){ try { localStorage.setItem(issueLocalKey(d), JSON.stringify({ t: t, saved: !!saved })); } catch (e) {} }
+    function issueTyped(){
+        const ta = document.getElementById('issueText');
+        clearTimeout(issueTimer);
+        issueTimer = setTimeout(function(){ issueLocalSet(issueDate, ta.value, false); }, 400);
+        issueStatus('Belum disimpan ke GSheet (draf tersimpan di browser ini dan tetap ikut di export).', 'text-warning');
+    }
+    async function issueSync(date){
+        if (!date || date === issueDate) return;
+        issueDate = date;
+        const ta = document.getElementById('issueText'), lb = document.getElementById('issueDateLabel');
+        if (!ta) return;
+        if (lb) lb.textContent = date;
+        const loc = issueLocalGet(date);
+        ta.value = (loc && loc.saved === false) ? loc.t : '';
+        issueStatus(loc && loc.saved === false ? 'Draf lokal (belum disimpan ke GSheet).' : '', 'text-warning');
+        if (offlineMode || !currentUser) { if (loc && loc.saved) ta.value = loc.t; return; }
+        try {
+            const r = await fetch(SHEET_WEBAPP_URL + '?action=issueGet&date=' + encodeURIComponent(date) + '&t=' + Date.now() + authQs());
+            const j = await r.json();
+            if (!j || !j.ok) throw new Error('backend');
+            if (issueDate !== date) return;                       // tanggal sudah berganti saat menunggu
+            if (!(loc && loc.saved === false)) { ta.value = j.text || ''; issueLocalSet(date, ta.value, true); issueStatus(j.text ? 'Tersimpan di GSheet.' : 'Belum ada catatan untuk tanggal ini.'); }
+        } catch (e) {
+            if (loc && loc.saved) ta.value = loc.t;
+            if (!(loc && loc.saved === false)) issueStatus('Catatan hanya tersimpan di browser ini (perbarui Code.gs agar bisa disimpan ke GSheet).', 'text-warning');
+        }
+    }
+    async function issueSave(){
+        const ta = document.getElementById('issueText');
+        if (!issueDate) return;
+        issueLocalSet(issueDate, ta.value, false);
+        if (!currentUser || offlineMode || ISSUE_ROLES.indexOf(currentUser.role) < 0) { issueStatus('Akun ini tidak punya izin menyimpan ke GSheet. Draf tetap tersimpan di browser ini dan ikut di export.', 'text-warning'); return; }
+        issueStatus('Menyimpan...');
+        try {
+            uploadBusy++;
+            const r = await authPostRetry({ action: 'issueSave', username: currentUser.username, token: currentUser.token, date: issueDate, text: ta.value }, null, 3);
+            if (!r || !r.ok) throw new Error((r && r.message) || 'Backend menolak (pastikan Code.gs sudah diperbarui).');
+            issueLocalSet(issueDate, ta.value, true);
+            issueStatus('Tersimpan ke GSheet (' + issueDate + ').', 'text-success');
+        } catch (e) { issueStatus('Gagal menyimpan ke GSheet: ' + e.message + ' — draf tetap tersimpan di browser ini.', 'text-danger'); }
+        finally { uploadBusy = Math.max(0, uploadBusy - 1); }
+    }
+    function issueLines(){
+        const ta = document.getElementById('issueText');
+        return String((ta && ta.value) || '').split('\n').map(l => l.replace(/^\s*(\d+\s*[\.\)]|[-•*])\s*/, '').trim()).filter(Boolean);
+    }
+    // Slide "Furnace Issued/Notes": kotak judul merah kiri-atas, logo kanan-atas, daftar bernomor, garis tiga warna di bawah
+    function issueBuildItems(W, H, fs){
+        const lines = issueLines();
+        if (!lines.length) return null;
+        const it = [];
+        it.push({ t: 'rect', x: 0, y: 0.033 * H, w: 0.063 * W, h: 0.09 * H, color: BRAND_RED });
+        it.push({ t: 'rect', x: 0.08 * W, y: 0.024 * H, w: 0.30 * W, h: 0.105 * H, color: 'C0504D' });
+        it.push({ t: 'text', text: 'Furnace Issued/Notes', x: 0.092 * W, y: 0.024 * H, w: 0.285 * W, h: 0.105 * H, pt: 22 * fs, bold: false, color: 'FFFFFF', align: 'left' });
+        const lw = 0.15 * W;
+        it.push({ t: 'image', data: CERIA_LOGO_B64, fmt: 'PNG', x: 0.985 * W - lw, y: 0.015 * H, w: lw, h: lw / 3.23 });
+        [BRAND_RED, BRAND_YELLOW, BRAND_BLACK].forEach((col, i) => it.push({ t: 'rect', x: i * W / 3, y: 0.984 * H, w: W / 3, h: 0.016 * H, color: col }));
+        // huruf terbesar yang masih muat (ukuran dasar PPT 13,33 x 7,5 in), memperhitungkan baris yang terlipat
+        let pt = 14;
+        [28, 26, 24, 22, 20, 18, 16].some(function(p){
+            const cpl = Math.floor((0.84 * 13.333) / (p / 72 * 0.52));
+            const n = lines.reduce((a, l) => a + Math.max(1, Math.ceil(l.length / cpl)), 0);
+            if (n * p / 72 * 1.25 + lines.length * p / 72 * 0.35 <= 0.70 * 7.5) { pt = p; return true; }
+            return false;
+        });
+        it.push({ t: 'numlist', lines: lines, x: 0.075 * W, y: 0.20 * H, w: 0.87 * W, h: 0.72 * H, pt: pt * fs, color: '000000' });
+        return it;
+    }
 
     $(document).ready(function() {
         initLayout();
